@@ -1,4 +1,5 @@
-const CACHE_NAME = 'bud-leaf-r2d2-v18';
+const CACHE_PREFIX = 'bud-leaf-teams-';
+const CACHE_NAME = 'bud-leaf-teams-v1';
 const CORE_FILES = [
   './index.html',
   './manifest.webmanifest'
@@ -35,7 +36,7 @@ self.addEventListener('activate', function (event) {
         return Promise.all(
           keys
             .filter(function (key) {
-              return key !== CACHE_NAME;
+              return key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME;
             })
             .map(function (key) {
               return caches.delete(key);
