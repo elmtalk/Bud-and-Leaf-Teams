@@ -1,0 +1,6 @@
+Bud&Leaf R2D2 stability build
+Branch: r2d2-stability-rebuild
+PWA cache: bud-leaf-r2d2-v18
+index.html Git blob SHA: 050fac77b03c4689146f66af35d07affb8961b52
+service-worker.js Git blob SHA: ef0bcc28ee4f8be38f962fd170abaf6839c7d2c9
+manifest.webmanifest Git blob SHA: b00b7dc289ee5d82227aa937afc94981d61065e6
