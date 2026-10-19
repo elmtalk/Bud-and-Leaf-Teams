@@ -1,27 +1,50 @@
 const CACHE_PREFIX = 'bud-leaf-teams-';
-const CACHE_NAME = 'bud-leaf-teams-v1';
+const CACHE_NAME = 'bud-leaf-teams-v2-storage-isolation';
 const CORE_FILES = [
   './index.html',
   './manifest.webmanifest'
 ];
 
+function teamsHtml(text) {
+  return String(text)
+    .replace("const DB_NAME='bud-field-app-v1';", "const DB_NAME='bud-field-app-teams-v1';")
+    .replace("const BUD_FALLBACK_PROJECTS_KEY='bud_projects_fallback_v01012';", "const BUD_FALLBACK_PROJECTS_KEY='bud_teams_projects_fallback_v1';")
+    .replaceAll('budleaf_settings_rc2e', 'budleaf_teams_settings_v1')
+    .replace('<title>Bud&Leaf Beta</title>', '<title>Bud&Leaf Teams</title>');
+}
+
+async function transformHtmlResponse(response) {
+  if (!response) return response;
+  const text = await response.text();
+  const headers = new Headers(response.headers);
+  headers.set('content-type', 'text/html; charset=utf-8');
+  headers.delete('content-length');
+  return new Response(teamsHtml(text), {
+    status: response.status,
+    statusText: response.statusText,
+    headers
+  });
+}
+
+async function fetchCore(url) {
+  const response = await fetch(url, { cache: 'reload' });
+  if (!response || !response.ok) return response;
+  if (url.endsWith('index.html')) return transformHtmlResponse(response);
+  return response;
+}
+
 self.addEventListener('install', function (event) {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then(function (cache) {
-        return Promise.all(
-          CORE_FILES.map(function (url) {
-            return fetch(url, { cache: 'reload' })
-              .then(function (response) {
-                if (response && response.ok) {
-                  return cache.put(url, response.clone());
-                }
-              })
-              .catch(function () {
-                return null;
-              });
-          })
-        );
+      .then(async function (cache) {
+        for (const url of CORE_FILES) {
+          try {
+            const response = await fetchCore(url);
+            if (response && response.ok) {
+              await cache.put(url, response.clone());
+            }
+          } catch (err) {}
+        }
       })
       .then(function () {
         return self.skipWaiting();
@@ -50,15 +73,39 @@ self.addEventListener('activate', function (event) {
 });
 
 self.addEventListener('fetch', function (event) {
-  var request = event.request;
+  const request = event.request;
 
-  if (request.method !== 'GET') {
-    return;
-  }
+  if (request.method !== 'GET') return;
 
-  var url = new URL(request.url);
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) return;
 
-  if (url.origin !== self.location.origin) {
+  const isTeamsNavigation =
+    request.mode === 'navigate' ||
+    url.pathname.endsWith('/Bud-and-Leaf-Teams/') ||
+    url.pathname.endsWith('/Bud-and-Leaf-Teams/index.html');
+
+  if (isTeamsNavigation) {
+    event.respondWith(
+      fetch(request)
+        .then(async function (response) {
+          if (!response || !response.ok) return response;
+          const transformed = await transformHtmlResponse(response);
+          const copy = transformed.clone();
+          caches.open(CACHE_NAME)
+            .then(function (cache) {
+              return cache.put('./index.html', copy);
+            })
+            .catch(function () {});
+          return transformed;
+        })
+        .catch(function () {
+          return caches.match('./index.html')
+            .then(function (cached) {
+              return cached || Response.error();
+            });
+        })
+    );
     return;
   }
 
@@ -66,7 +113,7 @@ self.addEventListener('fetch', function (event) {
     fetch(request)
       .then(function (response) {
         if (response && response.ok) {
-          var copy = response.clone();
+          const copy = response.clone();
           caches.open(CACHE_NAME)
             .then(function (cache) {
               return cache.put(request, copy);
@@ -78,18 +125,7 @@ self.addEventListener('fetch', function (event) {
       .catch(function () {
         return caches.match(request)
           .then(function (cached) {
-            if (cached) {
-              return cached;
-            }
-
-            if (request.mode === 'navigate') {
-              return caches.match('./index.html')
-                .then(function (fallback) {
-                  return fallback || Response.error();
-                });
-            }
-
-            return Response.error();
+            return cached || Response.error();
           });
       })
   );

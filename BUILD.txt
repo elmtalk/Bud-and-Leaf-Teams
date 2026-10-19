@@ -1,4 +1,6 @@
 Bud&Leaf Teams v1.1 development build
 Base: Bud&Leaf R2D2 stability rebuild
-PWA cache: bud-leaf-teams-v1
-Purpose: multi-surveyor / offline-first sync development
+PWA cache: bud-leaf-teams-v2-storage-isolation
+Internal database: bud-field-app-teams-v1
+Shared durable storage: existing Bud&Leaf Projects folder / .bud files
+Purpose: isolate Teams browser state while preserving the common project file system
