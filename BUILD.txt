@@ -1,19 +1,24 @@
-Bud&Leaf Teams v1.1 identity prototype
+Bud&Leaf Teams v1.1 identity prototype - mobile layout fix
 Base: Bud&Leaf R2D2 stability rebuild
-PWA cache: bud-leaf-teams-v3-identity
+PWA cache: bud-leaf-teams-v4-mobile-layout-fix
 Internal database: bud-field-app-teams-v1
 Shared durable storage: existing Bud&Leaf Projects folder / .bud files
 
-Added in this prototype:
-- surveyor name + unique initials/code
-- permanent project_uuid
-- permanent feature_uuid
-- visible capture_id (e.g. JT1 / JG1)
-- final_id retained separately for later ADM numbering
-- surveyor provenance + created/updated timestamps
-- identity fields added to full-field exports and .bud package metadata
+Fix:
+- removed all Teams runtime UI insertion from the project/setup screen
+- normal Bud&Leaf mobile layout is left untouched
+- surveyor selection is prompted only when required
 
-Not added yet:
+Identity layer retained:
+- project_uuid
+- feature_uuid
+- capture_id
+- final_id
+- surveyor_name / surveyor_code
+- created_at / updated_at
+- Teams metadata in .bud packages and full-field exports
+
+Still not added:
 - Firebase/cloud sync
 - authentication
 - conflict resolution

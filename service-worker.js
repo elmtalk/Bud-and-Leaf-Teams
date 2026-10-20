@@ -1,5 +1,5 @@
 const CACHE_PREFIX = 'bud-leaf-teams-';
-const CACHE_NAME = 'bud-leaf-teams-v3-identity';
+const CACHE_NAME = 'bud-leaf-teams-v4-mobile-layout-fix';
 const CORE_FILES = [
   './index.html',
   './manifest.webmanifest',
@@ -13,8 +13,6 @@ function replaceAllText(text, find, replacement) {
 function teamsHtml(text) {
   let html = String(text);
 
-  // Keep Teams browser state separate from standard Bud&Leaf while retaining
-  // the same user-selected Bud&Leaf Projects folder and .bud file structure.
   html = replaceAllText(html, "const DB_NAME='bud-field-app-v1';", "const DB_NAME='bud-field-app-teams-v1';");
   html = replaceAllText(html, "const BUD_FALLBACK_PROJECTS_KEY='bud_projects_fallback_v01012';", "const BUD_FALLBACK_PROJECTS_KEY='bud_teams_projects_fallback_v1';");
   html = replaceAllText(html, 'budleaf_settings_rc2e', 'budleaf_teams_settings_v1');
@@ -35,7 +33,7 @@ async function transformHtmlResponse(response) {
   return new Response(teamsHtml(text), {
     status: response.status,
     statusText: response.statusText,
-    headers
+    headers: headers
   });
 }
 
@@ -53,15 +51,11 @@ self.addEventListener('install', function (event) {
         for (const url of CORE_FILES) {
           try {
             const response = await fetchCore(url);
-            if (response && response.ok) {
-              await cache.put(url, response.clone());
-            }
+            if (response && response.ok) await cache.put(url, response.clone());
           } catch (err) {}
         }
       })
-      .then(function () {
-        return self.skipWaiting();
-      })
+      .then(function () { return self.skipWaiting(); })
   );
 });
 
@@ -74,14 +68,10 @@ self.addEventListener('activate', function (event) {
             .filter(function (key) {
               return key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME;
             })
-            .map(function (key) {
-              return caches.delete(key);
-            })
+            .map(function (key) { return caches.delete(key); })
         );
       })
-      .then(function () {
-        return self.clients.claim();
-      })
+      .then(function () { return self.clients.claim(); })
   );
 });
 
@@ -105,17 +95,14 @@ self.addEventListener('fetch', function (event) {
           const transformed = await transformHtmlResponse(response);
           const copy = transformed.clone();
           caches.open(CACHE_NAME)
-            .then(function (cache) {
-              return cache.put('./index.html', copy);
-            })
+            .then(function (cache) { return cache.put('./index.html', copy); })
             .catch(function () {});
           return transformed;
         })
         .catch(function () {
-          return caches.match('./index.html')
-            .then(function (cached) {
-              return cached || Response.error();
-            });
+          return caches.match('./index.html').then(function (cached) {
+            return cached || Response.error();
+          });
         })
     );
     return;
@@ -127,18 +114,15 @@ self.addEventListener('fetch', function (event) {
         if (response && response.ok) {
           const copy = response.clone();
           caches.open(CACHE_NAME)
-            .then(function (cache) {
-              return cache.put(request, copy);
-            })
+            .then(function (cache) { return cache.put(request, copy); })
             .catch(function () {});
         }
         return response;
       })
       .catch(function () {
-        return caches.match(request)
-          .then(function (cached) {
-            return cached || Response.error();
-          });
+        return caches.match(request).then(function (cached) {
+          return cached || Response.error();
+        });
       })
   );
 });
