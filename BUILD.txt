@@ -1,24 +1,13 @@
-Bud&Leaf Teams v1.1 identity prototype - mobile layout fix
+Bud&Leaf Teams recovery build
 Base: Bud&Leaf R2D2 stability rebuild
-PWA cache: bud-leaf-teams-v4-mobile-layout-fix
-Internal database: bud-field-app-teams-v1
-Shared durable storage: existing Bud&Leaf Projects folder / .bud files
+PWA cache: bud-leaf-teams-v5-recovery
 
-Fix:
-- removed all Teams runtime UI insertion from the project/setup screen
-- normal Bud&Leaf mobile layout is left untouched
-- surveyor selection is prompted only when required
+Purpose:
+- restore the original Bud&Leaf app shell and controls
+- no runtime HTML rewriting
+- no teams-v11.js injection
+- no UUID / surveyor / cloud changes in this recovery build
+- Teams cache remains isolated from standard Bud&Leaf
 
-Identity layer retained:
-- project_uuid
-- feature_uuid
-- capture_id
-- final_id
-- surveyor_name / surveyor_code
-- created_at / updated_at
-- Teams metadata in .bud packages and full-field exports
-
-Still not added:
-- Firebase/cloud sync
-- authentication
-- conflict resolution
+Important:
+The repository index.html is served unchanged.
