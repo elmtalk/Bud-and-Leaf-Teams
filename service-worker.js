@@ -1,16 +1,29 @@
 const CACHE_PREFIX = 'bud-leaf-teams-';
-const CACHE_NAME = 'bud-leaf-teams-v2-storage-isolation';
+const CACHE_NAME = 'bud-leaf-teams-v3-identity';
 const CORE_FILES = [
   './index.html',
-  './manifest.webmanifest'
+  './manifest.webmanifest',
+  './teams-v11.js'
 ];
 
+function replaceAllText(text, find, replacement) {
+  return String(text).split(find).join(replacement);
+}
+
 function teamsHtml(text) {
-  return String(text)
-    .replace("const DB_NAME='bud-field-app-v1';", "const DB_NAME='bud-field-app-teams-v1';")
-    .replace("const BUD_FALLBACK_PROJECTS_KEY='bud_projects_fallback_v01012';", "const BUD_FALLBACK_PROJECTS_KEY='bud_teams_projects_fallback_v1';")
-    .replaceAll('budleaf_settings_rc2e', 'budleaf_teams_settings_v1')
-    .replace('<title>Bud&Leaf Beta</title>', '<title>Bud&Leaf Teams</title>');
+  let html = String(text);
+
+  // Keep Teams browser state separate from standard Bud&Leaf while retaining
+  // the same user-selected Bud&Leaf Projects folder and .bud file structure.
+  html = replaceAllText(html, "const DB_NAME='bud-field-app-v1';", "const DB_NAME='bud-field-app-teams-v1';");
+  html = replaceAllText(html, "const BUD_FALLBACK_PROJECTS_KEY='bud_projects_fallback_v01012';", "const BUD_FALLBACK_PROJECTS_KEY='bud_teams_projects_fallback_v1';");
+  html = replaceAllText(html, 'budleaf_settings_rc2e', 'budleaf_teams_settings_v1');
+  html = replaceAllText(html, '<title>Bud&Leaf Beta</title>', '<title>Bud&Leaf Teams</title>');
+
+  if (!html.includes('teams-v11.js')) {
+    html = html.replace('</body>', '<script src="./teams-v11.js"></script>\n</body>');
+  }
+  return html;
 }
 
 async function transformHtmlResponse(response) {
@@ -74,7 +87,6 @@ self.addEventListener('activate', function (event) {
 
 self.addEventListener('fetch', function (event) {
   const request = event.request;
-
   if (request.method !== 'GET') return;
 
   const url = new URL(request.url);

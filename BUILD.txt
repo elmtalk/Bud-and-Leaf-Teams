@@ -1,6 +1,19 @@
-Bud&Leaf Teams v1.1 development build
+Bud&Leaf Teams v1.1 identity prototype
 Base: Bud&Leaf R2D2 stability rebuild
-PWA cache: bud-leaf-teams-v2-storage-isolation
+PWA cache: bud-leaf-teams-v3-identity
 Internal database: bud-field-app-teams-v1
 Shared durable storage: existing Bud&Leaf Projects folder / .bud files
-Purpose: isolate Teams browser state while preserving the common project file system
+
+Added in this prototype:
+- surveyor name + unique initials/code
+- permanent project_uuid
+- permanent feature_uuid
+- visible capture_id (e.g. JT1 / JG1)
+- final_id retained separately for later ADM numbering
+- surveyor provenance + created/updated timestamps
+- identity fields added to full-field exports and .bud package metadata
+
+Not added yet:
+- Firebase/cloud sync
+- authentication
+- conflict resolution
