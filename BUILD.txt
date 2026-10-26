@@ -1,29 +1,35 @@
-Bud&Leaf Teams - surveyor registration checkpoint (safe v6a)
-Base: recovery v5 / R2D2 stability build
-PWA cache: bud-leaf-teams-v6a-surveyor-safe
+Bud&Leaf Teams - surveyor registration checkpoint (safe v6b, full index)
+Base index: current live Teams recovery-v18 build
+Base Git blob SHA: 050fac77b03c4689146f66af35d07affb8961b52
+PWA cache: bud-leaf-teams-v6b-surveyor-full-index
 
-Important:
-- service worker serves index.html unchanged
-- no runtime HTML rewriting
-- teams-surveyor.js must be referenced directly by index.html
+UPLOAD THESE FILES WHOLE:
+- index.html
+- teams-surveyor.js
+- service-worker.js
+- BUILD.txt
 
-One manual index.html edit is required:
-Add this line immediately before the final </body> tag:
+No manual index editing is required.
 
-<script src="./teams-surveyor.js"></script>
-
-This build adds only:
-- surveyor name + 2–3 letter code before opening field map
+Adds:
+- surveyor name + unique 2–3 letter code before entering field map
 - project-level surveyor registry
 - duplicate-code rejection within the project
 - local device surveyor memory
+- surveyor gate on Current Project and Saved Project map-open routes
 
-Not changed:
-- project creation
-- project opening/import
-- map
-- feature IDs
-- UUIDs
+Preserved:
+- recovery v18 / Stored Projects
+- Previous versions
+- linked-folder save/reopen
+- Share project ZIP
+- project creation/open/import
+- map/editor
 - exports
-- layout/CSS
-- cloud/Firebase
+- current phone layout/CSS
+
+Not added yet:
+- feature_uuid
+- capture_id / multi-surveyor feature numbering
+- final_id
+- cloud/Firebase sync

@@ -197,7 +197,8 @@
 
     return button.id === 'setupStartSurveyBtn' ||
            button.id === 'setupOpenMapBtn' ||
-           button.id === 'openProjectBtn';
+           button.id === 'openProjectBtn' ||
+           !!(button.dataset && button.dataset.projectOpen);
   }
 
   function onMapOpenCapture(event) {
