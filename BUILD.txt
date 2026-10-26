@@ -1,13 +1,24 @@
-Bud&Leaf Teams recovery build
-Base: Bud&Leaf R2D2 stability rebuild
-PWA cache: bud-leaf-teams-v5-recovery
+Bud&Leaf Teams - surveyor registration checkpoint
+Base: recovery v5 / R2D2 stability build
+PWA cache: bud-leaf-teams-v6-surveyor-registration
 
-Purpose:
-- restore the original Bud&Leaf app shell and controls
-- no runtime HTML rewriting
-- no teams-v11.js injection
-- no UUID / surveyor / cloud changes in this recovery build
-- Teams cache remains isolated from standard Bud&Leaf
+This build adds ONE Teams feature only:
+- asks for surveyor name + 2-3 letter code before opening the field map
+- stores the surveyor registry in project_meta.teams_surveyors
+- remembers this device's surveyor for that project
+- rejects a code already assigned to another named surveyor in that project
+- persists the registry through the normal Bud&Leaf save path
 
-Important:
-The repository index.html is served unchanged.
+Not changed:
+- project creation logic
+- project opening/import logic
+- map logic
+- feature IDs
+- UUIDs
+- exports
+- cloud/Firebase
+- page layout/CSS
+
+Rollback:
+A copy of the previous recovery service worker is included as
+service-worker.RECOVERY-v5.js.
