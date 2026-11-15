@@ -1,5 +1,5 @@
 const CACHE_PREFIX = 'bud-leaf-teams-';
-const CACHE_NAME = 'bud-leaf-teams-v6b-surveyor-full-index';
+const CACHE_NAME = 'bud-leaf-teams-v7a-identity';
 
 const CORE_FILES = [
   './index.html',
