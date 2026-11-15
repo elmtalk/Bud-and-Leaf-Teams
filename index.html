@@ -714,6 +714,7 @@ label.btn,
         <div class="card current-project-card">
           <h3 class="clean-subtitle">Current project</h3>
           <div id="setupStatusBox" class="setup-status">No project selected.</div>
+          <div id="teamsSurveyorStatus" class="clean-muted" style="margin-top:8px">Surveyor: —</div>
           <div class="project-dashboard-actions project-only hidden" style="margin-top:14px">
             <button id="setupStartSurveyBtn" class="btn primary full" type="button">Open field map</button>
             <button id="editProjectDetailsBtn" class="btn secondary full" type="button">Edit Project Details</button>
@@ -1250,6 +1251,85 @@ const state={
 function $(id){return document.getElementById(id)}
 function uid(){return 'p_'+Math.random().toString(36).slice(2,10)}
 function nowIso(){return new Date().toISOString()}
+const TEAMS_SCHEMA_VERSION='1.1';
+function teamsUuid(){
+  try{
+    if(globalThis.crypto && typeof globalThis.crypto.randomUUID==='function') return globalThis.crypto.randomUUID();
+  }catch(e){}
+  return 'u_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,14);
+}
+function currentTeamsSurveyor(){
+  try{
+    if(window.BudLeafTeamsSurveyor && typeof window.BudLeafTeamsSurveyor.getCurrent==='function') return window.BudLeafTeamsSurveyor.getCurrent();
+  }catch(e){}
+  return null;
+}
+function ensureTeamsFeatureIdentity(props, project){
+  if(!props) return false;
+  let changed=false;
+  const fallbackCreated=(project&&project.created_at)||nowIso();
+  const fallbackUpdated=(project&&project.updated_at)||fallbackCreated;
+  if(!props.feature_uuid){ props.feature_uuid=teamsUuid(); changed=true; }
+  if(props.capture_id===undefined || props.capture_id===null){ props.capture_id=String(props.tree_id||''); changed=true; }
+  if(props.final_id===undefined || props.final_id===null){ props.final_id=''; changed=true; }
+  if(props.surveyor_code===undefined || props.surveyor_code===null){ props.surveyor_code=''; changed=true; }
+  if(props.surveyor_name===undefined || props.surveyor_name===null){ props.surveyor_name=''; changed=true; }
+  if(!props.created_at){ props.created_at=fallbackCreated; changed=true; }
+  if(!props.updated_at){ props.updated_at=fallbackUpdated; changed=true; }
+  return changed;
+}
+function ensureTeamsProjectIdentity(project){
+  if(!project) return false;
+  let changed=false;
+  if(project.schema_version!=='1.1'){ project.schema_version='1.1'; changed=true; }
+  if(!project.project_uuid){ project.project_uuid=teamsUuid(); changed=true; }
+  project.project_meta=project.project_meta||{};
+  if(project.project_meta.project_uuid!==project.project_uuid){ project.project_meta.project_uuid=project.project_uuid; changed=true; }
+  if(project.project_meta.schema_version!=='1.1'){ project.project_meta.schema_version='1.1'; changed=true; }
+  const features=Array.isArray(project.features)?project.features:[];
+  features.forEach(feature=>{
+    if(feature && ensureTeamsFeatureIdentity(feature.properties||(feature.properties={}),project)) changed=true;
+  });
+  if(Array.isArray(project.group_stem_points)){
+    project.group_stem_points.forEach(stem=>{
+      if(!stem) return;
+      const props=stem.properties||(stem.properties={});
+      if(!stem.parent_feature_uuid){
+        const parent=features.find(f=>
+          f && (
+            (stem.parent_feature_id && f.id===stem.parent_feature_id) ||
+            (!stem.parent_feature_id && stem.parent_id && f.properties && String(f.properties.tree_id||'')===String(stem.parent_id))
+          )
+        );
+        const parentUuid=parent&&parent.properties&&parent.properties.feature_uuid;
+        if(parentUuid){ stem.parent_feature_uuid=parentUuid; changed=true; }
+      }
+      if(stem.parent_feature_uuid && props.parent_feature_uuid!==stem.parent_feature_uuid){
+        props.parent_feature_uuid=stem.parent_feature_uuid; changed=true;
+      }
+      if(stem.parent_id && props.parent_id!==stem.parent_id){ props.parent_id=stem.parent_id; changed=true; }
+    });
+  }
+  return changed;
+}
+function stampNewTeamsFeature(props, project){
+  if(!props) return props;
+  ensureTeamsProjectIdentity(project);
+  const surveyor=currentTeamsSurveyor();
+  const now=nowIso();
+  props.feature_uuid=teamsUuid();
+  props.capture_id=String(props.tree_id||'');
+  props.final_id='';
+  props.surveyor_code=surveyor&&surveyor.code?String(surveyor.code):'';
+  props.surveyor_name=surveyor&&surveyor.name?String(surveyor.name):'';
+  props.created_at=now;
+  props.updated_at=now;
+  return props;
+}
+function touchTeamsFeature(props){
+  if(props) props.updated_at=nowIso();
+  return props;
+}
 function escapeHtml(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
 function showNotice(msg){$('homeNotice').textContent=msg}
 function showGps(msg){ const el=$('gpsPill'); if(el){ el.textContent=''; el.classList.add('hidden'); } }
@@ -1272,12 +1352,28 @@ function projectCounts(project){
   return c;
 }
 function typeWord(code){return ({T:'Individual tree',G:'Group',H:'Hedge',W:'Woodland'})[code]||code}
-function nextTreeId(project, type){
-  const nums=(project.features||[]).filter(f=>f.properties.feature_type===type).map(f=>{
+function nextTreeId(project,type){
+  const featureType=String(type||'T').toUpperCase();
+  const surveyor=currentTeamsSurveyor();
+  if(surveyor&&surveyor.code){
+    const pattern=new RegExp('^'+featureType+'(\\d+)$','i');
+    const nums=(project.features||[])
+      .filter(f=>{
+        const props=(f&&f.properties)||{};
+        if(String(props.feature_type||'').toUpperCase()!==featureType) return false;
+        const owner=String(props.surveyor_code||'').toUpperCase();
+        return !owner || owner===String(surveyor.code).toUpperCase();
+      })
+      .map(f=>{
+        const m=String((f.properties||{}).tree_id||'').match(pattern);
+        return m?Number(m[1]):0;
+      });
+    return featureType+(Math.max(0,...nums)+1);
+  }
+  const nums=(project.features||[]).filter(f=>f.properties.feature_type===featureType).map(f=>{
     const m=String(f.properties.tree_id||'').match(/(\d+)$/); return m?Number(m[1]):0;
   });
-  const next=(Math.max(0,...nums)+1);
-  return `${type}${next}`;
+  return featureType+(Math.max(0,...nums)+1);
 }
 function toBng(lat,lng){ try{const [x,y]=proj4('EPSG:4326','EPSG:27700',[lng,lat]); return {x:Math.round(x),y:Math.round(y)};}catch(e){return {x:'',y:''}} }
 function updatePointPropsFromLatLng(props, latlng){ const b=toBng(latlng.lat, latlng.lng); props.x=String(b.x||''); props.y=String(b.y||''); return props; }
@@ -1559,9 +1655,10 @@ async function clearProjectsDb(){
 }
 
 function blankProject(name){
-  return {id:uid(), name:name||'New Project', survey_mode:'BS5837', created_at:nowIso(), updated_at:nowIso(), archived:false, schema:JSON.parse(JSON.stringify(defaultSchema)), features:[], group_stem_points:[], red_line_boundary:null, topo_reference:null, project_meta:{project_name:name||'New Project'}};
+  const p={id:uid(), name:name||'New Project', survey_mode:'BS5837', created_at:nowIso(), updated_at:nowIso(), archived:false, schema:JSON.parse(JSON.stringify(defaultSchema)), features:[], group_stem_points:[], red_line_boundary:null, topo_reference:null, project_meta:{project_name:name||'New Project'}};
+  ensureTeamsProjectIdentity(p);
+  return p;
 }
-
 async function refreshProjects(selectId){
   state.projects=(await listProjectsDb());
   for(const project of state.projects){
@@ -1607,6 +1704,7 @@ function renderProjectList(){
   box.querySelectorAll('[data-project-open]').forEach(btn=>btn.onclick=async ()=>{
     state.currentProjectId=btn.dataset.projectOpen;
     renderProjectList(); renderCurrentProjectSummary(); renderProjectPill(); afterProjectOpenedUi();
+    if(window.BudLeafTeamsSurveyor && typeof window.BudLeafTeamsSurveyor.ensureCurrent==='function' && !window.BudLeafTeamsSurveyor.ensureCurrent()) return;
     // Re-establish the linked project folder as the project opens. In normal use
     // this is silent; if Android/browser permission has genuinely been lost, the
     // existing reconnect flow is shown before field work continues.
@@ -1661,6 +1759,7 @@ function showBudHomeTab(name){
 
 function renderSetupStatus(){
   const box=$('setupStatusBox'); if(!box) return;
+  if(window.BudLeafTeamsSurveyor && typeof window.BudLeafTeamsSurveyor.renderStatus==='function') window.BudLeafTeamsSurveyor.renderStatus();
   const p=currentProject();
   if(!p){box.textContent='No project selected. Choose New project, Open existing, or use Stored Projects under Project files.'; updateProjectDashboardVisibility(); return;}
   const meta=p.project_meta||{}, sc=meta.site_centre||{};
@@ -2226,7 +2325,13 @@ async function setupUseMapCentre(){
   if(currentProject() && $('newProjectSetupPanel') && $('newProjectSetupPanel').classList.contains('hidden')) await setBudProjectLocation(c.lat,c.lng,'Using current map centre.',$('setupLocationInput')?.value||'Map centre');
   else showNotice('Site centre set from map.');
 }
-async function openSetupMap(){if(!currentProject()){ alert('Use New project or Open existing project first.'); return; } showMap(); switchBaseMap('aerial'); setTimeout(()=>{if(state.map){state.map.invalidateSize(); rebuildMap(); fitMapToProject();}},120);}
+async function openSetupMap(){
+  if(!currentProject()){ alert('Use New project or Open existing project first.'); return; }
+  if(window.BudLeafTeamsSurveyor && typeof window.BudLeafTeamsSurveyor.ensureCurrent==='function' && !window.BudLeafTeamsSurveyor.ensureCurrent()) return;
+  showMap();
+  switchBaseMap('aerial');
+  setTimeout(()=>{if(state.map){state.map.invalidateSize(); rebuildMap(); fitMapToProject();}},120);
+}
 function switchBaseMap(mode){if(!state.map)return;try{if(mode==='street'){if(state.map.hasLayer(state.satLayer))state.map.removeLayer(state.satLayer);if(!state.map.hasLayer(state.stdLayer))state.stdLayer.addTo(state.map);}else{if(state.map.hasLayer(state.stdLayer))state.map.removeLayer(state.stdLayer);if(!state.map.hasLayer(state.satLayer))state.satLayer.addTo(state.map);}}catch(e){}}
 async function startRlbDrawingFromSetup(){
   if(!currentProject()){ alert('Use New project or Open existing project first.'); return; }
@@ -2358,7 +2463,7 @@ function updateCreateSheetForMode(){
     $('walkBoundaryBtn').classList.toggle('hidden', t==='T');
   }
 }
-async function openCreateSheet(){ if(!ensureProject()) return; if(!(await ensureProjectFileSetupForSurvey())) return; updateCreateSheetForMode(); $('modalBackdrop').classList.remove('hidden'); $('createSheet').classList.remove('hidden'); $('featureSheet').classList.add('hidden'); }
+async function openCreateSheet(){ if(!ensureProject()) return; if(window.BudLeafTeamsSurveyor && typeof window.BudLeafTeamsSurveyor.ensureCurrent==='function' && !window.BudLeafTeamsSurveyor.ensureCurrent()) return; if(!(await ensureProjectFileSetupForSurvey())) return; updateCreateSheetForMode(); $('modalBackdrop').classList.remove('hidden'); $('createSheet').classList.remove('hidden'); $('featureSheet').classList.add('hidden'); }
 function openFeatureSheet(featureId){
   const feature=getFeatureById(featureId); if(!feature) return;
   state.selectedFeatureId=featureId;
@@ -2638,6 +2743,7 @@ function renderFeatureSheet(feature){
 
   async function persist(){
     recomputeProps(props);
+    touchTeamsFeature(props);
     await saveCurrentProject();
     rebuildMap();
   }
@@ -2814,6 +2920,7 @@ async function createDuplicateAtLatLng(latlng){
   if(!p||!d) return;
   const props=JSON.parse(JSON.stringify(d.props||{}));
   props.tree_id=nextTreeId(p, props.feature_type||d.type||'T');
+  stampNewTeamsFeature(props,p);
   updatePointPropsFromLatLng(props, latlng);
   const feature={type:'Feature', id:uid(), geometry:{type:'Point', coordinates:[latlng.lng, latlng.lat]}, properties:recomputeProps(props)};
   p.features.push(feature);
@@ -2828,12 +2935,28 @@ function groupStemPoints(project=currentProject()){
   project.group_stem_points=Array.isArray(project.group_stem_points)?project.group_stem_points:[];
   return project.group_stem_points;
 }
-function nextStemId(project,parentId){
+function nextStemId(project,parentId,parentFeatureUuid=''){
   const prefix=String(parentId||'G')+'-S';
-  const nums=groupStemPoints(project).filter(s=>String(s.parent_id||'')===String(parentId)).map(s=>{
-    const m=String(s.stem_id||'').match(/S(\d+)$/i); return m?Number(m[1]):0;
+  const nums=groupStemPoints(project).filter(stem=>{
+    if(parentFeatureUuid && stem.parent_feature_uuid) return String(stem.parent_feature_uuid)===String(parentFeatureUuid);
+    return String(stem.parent_id||'')===String(parentId);
+  }).map(stem=>{
+    const m=String(stem.stem_id||'').match(/S(\d+)$/i); return m?Number(m[1]):0;
   });
   return prefix+(Math.max(0,...nums)+1);
+}
+function stemBelongsToPlotter(stem,plotter){
+  if(!stem||!plotter) return false;
+  if(plotter.parent_feature_uuid && stem.parent_feature_uuid) return String(stem.parent_feature_uuid)===String(plotter.parent_feature_uuid);
+  if(plotter.parent_feature_id && stem.parent_feature_id) return String(stem.parent_feature_id)===String(plotter.parent_feature_id);
+  return String(stem.parent_id||'')===String(plotter.parent_id||'');
+}
+function stemBelongsToFeature(stem,feature){
+  if(!stem||!feature) return false;
+  const props=feature.properties||{};
+  if(props.feature_uuid && stem.parent_feature_uuid) return String(stem.parent_feature_uuid)===String(props.feature_uuid);
+  if(feature.id && stem.parent_feature_id) return String(stem.parent_feature_id)===String(feature.id);
+  return String(stem.parent_id||'')===String(props.tree_id||'');
 }
 function updateStemPlotterUi(){
   const active=!!state.stemPlotter;
@@ -2841,23 +2964,25 @@ function updateStemPlotterUi(){
   if(!active) return;
   const p=currentProject();
   const parentId=state.stemPlotter.parent_id;
-  const count=groupStemPoints(p).filter(s=>String(s.parent_id||'')===String(parentId)).length;
+  const count=groupStemPoints(p).filter(stem=>stemBelongsToPlotter(stem,state.stemPlotter)).length;
   if($('stemPlotterStatus')) $('stemPlotterStatus').textContent=`Stem plotter: ${parentId}. Tap map to add stems, or use GPS. ${count} stem point(s).`;
 }
 function startStemPlotterForSelectedFeature(){
+  const p=currentProject();
   const feature=getFeatureById(state.selectedFeatureId);
-  if(!feature) return;
+  if(!p||!feature) return;
   const pr=feature.properties||{};
   if(String(pr.feature_type||'').toUpperCase()!=='G'){ showNotice('Stem plotter is for groups only.'); return; }
+  ensureTeamsFeatureIdentity(pr,p);
   closeSheets();
-  state.stemPlotter={parent_feature_id:feature.id,parent_id:pr.tree_id||feature.id};
+  state.stemPlotter={parent_feature_id:feature.id,parent_feature_uuid:pr.feature_uuid,parent_id:pr.tree_id||feature.id};
   updateStemPlotterUi();
   showNotice('Stem plotter active. Tap the map to add stem points.');
 }
 async function addStemPointAtLatLng(latlng){
   const p=ensureProject(); const sp=state.stemPlotter;
   if(!p||!sp||!latlng) return;
-  const stem={type:'Feature', id:uid(), parent_feature_id:sp.parent_feature_id, parent_id:sp.parent_id, stem_id:nextStemId(p,sp.parent_id), geometry:{type:'Point', coordinates:[latlng.lng,latlng.lat]}, properties:{layer:'group_stem_points', parent_id:sp.parent_id}};
+  const stem={type:'Feature', id:uid(), parent_feature_id:sp.parent_feature_id, parent_feature_uuid:sp.parent_feature_uuid||'', parent_id:sp.parent_id, stem_id:nextStemId(p,sp.parent_id,sp.parent_feature_uuid), geometry:{type:'Point', coordinates:[latlng.lng,latlng.lat]}, properties:{layer:'group_stem_points', parent_id:sp.parent_id, parent_feature_uuid:sp.parent_feature_uuid||''}};
   stem.properties.stem_id=stem.stem_id;
   groupStemPoints(p).push(stem);
   await saveCurrentProject();
@@ -2874,14 +2999,14 @@ async function undoLastStemPoint(){
   const p=ensureProject(); const sp=state.stemPlotter; if(!p||!sp) return;
   const list=groupStemPoints(p);
   for(let i=list.length-1;i>=0;i--){
-    if(String(list[i].parent_id||'')===String(sp.parent_id)){ list.splice(i,1); break; }
+    if(stemBelongsToPlotter(list[i],sp)){ list.splice(i,1); break; }
   }
   await saveCurrentProject(); rebuildMap(); updateStemPlotterUi(); showNotice('Last group stem point removed.');
 }
 async function clearStemPointsForActiveGroup(){
   const p=ensureProject(); const sp=state.stemPlotter; if(!p||!sp) return;
   if(!confirm('Clear all stem points for this group?')) return;
-  p.group_stem_points=groupStemPoints(p).filter(s=>String(s.parent_id||'')!==String(sp.parent_id));
+  p.group_stem_points=groupStemPoints(p).filter(stem=>!stemBelongsToPlotter(stem,sp));
   await saveCurrentProject(); rebuildMap(); updateStemPlotterUi(); showNotice('Group stem points cleared.');
 }
 function finishStemPlotter(){
@@ -4121,6 +4246,7 @@ async function handleDrawCreated(e){
     const d=state.pendingDuplicate;
     const props=JSON.parse(JSON.stringify(d.props||{}));
     props.tree_id=nextTreeId(p, props.feature_type||d.type||'G');
+    stampNewTeamsFeature(props,p);
     const geom=geojsonFromLayer(layer);
     if(['Polygon','MultiPolygon'].includes(geom.type)){
       try{ const centre=L.geoJSON({type:'Feature',geometry:geom}).getBounds().getCenter(); updatePointPropsFromLatLng(props, centre); }catch(e){}
@@ -4136,7 +4262,9 @@ async function handleDrawCreated(e){
   }
   const type=state.createChoice.featureType;
   const category=state.createChoice.category;
-  const feature={ type:'Feature', id:uid(), geometry:geojsonFromLayer(layer), properties:buildDefaults(type, category, layer.getLatLng?layer.getLatLng():null) };
+  const newProps=buildDefaults(type, category, layer.getLatLng?layer.getLatLng():null);
+  stampNewTeamsFeature(newProps,currentProject());
+  const feature={ type:'Feature', id:uid(), geometry:geojsonFromLayer(layer), properties:newProps };
   if(type!=='T'){
     const centre=layer.getBounds().getCenter();
     updatePointPropsFromLatLng(feature.properties, centre);
@@ -4150,9 +4278,8 @@ async function handleDrawCreated(e){
 async function deleteSelectedFeature(){
   const p=currentProject(); if(!p||!state.selectedFeatureId) return;
   const deleting=getFeatureById(state.selectedFeatureId);
-  const deletingGroupId=deleting && deleting.properties ? (deleting.properties.tree_id || deleting.id) : '';
   p.features=p.features.filter(f=>f.id!==state.selectedFeatureId);
-  if(deletingGroupId) p.group_stem_points=groupStemPoints(p).filter(s=>String(s.parent_id||'')!==String(deletingGroupId));
+  if(deleting) p.group_stem_points=groupStemPoints(p).filter(stem=>!stemBelongsToFeature(stem,deleting));
   state.selectedFeatureId=null;
   closeSheets();
   await saveCurrentProject();
@@ -4183,6 +4310,7 @@ async function finishEditGeometry(){
       }catch(e){}
     }
     recomputeProps(feature.properties);
+    touchTeamsFeature(feature.properties);
     await saveCurrentProject();
     rebuildMap();
   }
@@ -4308,7 +4436,7 @@ function budExportPhotoCount(props){return Array.isArray(props.photos)?props.pho
 function budExportPhotoNames(props){return Array.isArray(props.photos)?props.photos.map(p=>p.name||'photo').join('; '):'';}
 function budAllExportHeaders(project){
   const schemaKeys=(project&&Array.isArray(project.schema)?project.schema:defaultSchema).map(f=>f.key).filter(Boolean);
-  const extras=['rpa_radius','effective_dbh_mm','lat','lon','geometry_type','wkt','photo_count','photo_names'];
+  const extras=['feature_uuid','capture_id','final_id','surveyor_code','surveyor_name','created_at','updated_at','rpa_radius','effective_dbh_mm','lat','lon','geometry_type','wkt','photo_count','photo_names'];
   return Array.from(new Set(schemaKeys.concat(extras)));
 }
 function budExportValue(feature,key){
@@ -4497,6 +4625,7 @@ async function importGeoJSONFile(file){
       }catch(e){}
     }
     if(!feature.properties.tree_id) feature.properties.tree_id=nextTreeId(p, feature.properties.feature_type);
+    ensureTeamsFeatureIdentity(feature.properties,p);
     p.features.push(feature);
   });
   await saveCurrentProject();
@@ -4509,6 +4638,7 @@ function coreSchemaDefinition(key){
 }
 function repairProjectSchema(project){
   if(!project) return false;
+  let changed=false;
   const current=Array.isArray(project.schema)?project.schema:[];
   const seen=new Set();
   const repaired=[];
@@ -4529,8 +4659,9 @@ function repairProjectSchema(project){
   });
   const before=JSON.stringify(project.schema||[]);
   const after=JSON.stringify(repaired);
-  if(before!==after){ project.schema=repaired; return true; }
-  return false;
+  if(before!==after){ project.schema=repaired; changed=true; }
+  if(ensureTeamsProjectIdentity(project)) changed=true;
+  return changed;
 }
 function mapSchemaField(def){
   const name=String(def.name||def.key||'').trim();
@@ -4590,6 +4721,7 @@ function convertDashboardSurveyFeature(src, project){
     }catch(e){}
   }
   if(!feature.properties.tree_id) feature.properties.tree_id = nextTreeId(project, feature.properties.feature_type || guessTypeFromGeometry(geom));
+  ensureTeamsFeatureIdentity(feature.properties,project);
   return feature;
 }
 
@@ -4609,7 +4741,11 @@ async function importDashboardPackageObject(pkg,sourceName,existingProject=null)
   const rawName=(pj.project&&(pj.project.project_name||pj.project.name))||(pkg.project&&pkg.project.name)||sourceName||'Imported Project';
   const name=String(rawName).replace(/\.(bud|budleaf|json)$/i,'')||'Imported Project';
 
+  const incomingProjectUuid=String(pkg.project_uuid||pj.project_uuid||(pj.project&&pj.project.project_uuid)||'');
   let project=existingProject||null;
+  if(!project && incomingProjectUuid){
+    project=(state.projects||[]).find(p=>String(p.project_uuid||'')===incomingProjectUuid)||null;
+  }
   if(!project && pkg.project_id){
     project=(state.projects||[]).find(p=>p.id===pkg.project_id)||null;
   }
@@ -4622,6 +4758,7 @@ async function importDashboardPackageObject(pkg,sourceName,existingProject=null)
   project.name=name;
   project.id=preservedId;
   project.package_version=pj.package_version||project.package_version||'';
+  if(incomingProjectUuid) project.project_uuid=incomingProjectUuid;
   project.schema_version=pj.dashboard_version||pj.schema_version||project.schema_version||'';
   project.project_meta=Object.assign({},project.project_meta||{},pj.project||{},{project_name:name});
   project.survey_mode=(pj.survey_mode&&(pj.survey_mode.mode||pj.survey_mode))||(project.project_meta&&project.project_meta.survey_mode)||pkg.mode||project.survey_mode||'BS5837';
@@ -4705,8 +4842,11 @@ async function importProjectJsonFile(file){
       (json.project_json&&json.project_json.project&&(json.project_json.project.project_name||json.project_json.project.name)) ||
       (json.project&&json.project.name) || sourceName || 'Imported Project'
     );
+    const incomingUuid=String(json.project_uuid||(json.project_json&&json.project_json.project_uuid)||(json.project_json&&json.project_json.project&&json.project_json.project.project_uuid)||'');
     const existing=(state.projects||[]).find(p=>
-      (json.project_id && p.id===json.project_id) || projectNameKey(p.name)===projectNameKey(packageName)
+      (incomingUuid && String(p.project_uuid||'')===incomingUuid) ||
+      (!incomingUuid && json.project_id && p.id===json.project_id) ||
+      (!incomingUuid && projectNameKey(p.name)===projectNameKey(packageName))
     ) || null;
 
     if(existing){
@@ -4793,17 +4933,21 @@ function projectSiteCentre(project){
 
 function currentBudProjectPackage(){
   const p=ensureProject(); if(!p) return null;
+  ensureTeamsProjectIdentity(p);
   const siteCentre=projectSiteCentre(p);
-  const projectMeta=Object.assign({},p.project_meta||{},{project_name:p.name,survey_mode:getProjectMode(p)});
+  const projectMeta=Object.assign({},p.project_meta||{},{project_name:p.name,survey_mode:getProjectMode(p),project_uuid:p.project_uuid,schema_version:p.schema_version});
   if(siteCentre) projectMeta.site_centre={lat:siteCentre.lat,lon:siteCentre.lon};
   const payload={
     app:'Bud&Leaf Beta 1.0',
     file_type:'budleaf_project_package',
     saved_at:nowIso(),
     project_id:p.id,
+    project_uuid:p.project_uuid,
+    schema_version:p.schema_version,
     project_json:{
       package_version:'1.0',
-      dashboard_version:p.schema_version||'bud-beta-1.0',
+      project_uuid:p.project_uuid,
+      dashboard_version:p.schema_version||'1.1',
       project:projectMeta,
       coordinate_reference_system:{working_crs:'EPSG:27700',display_crs:'EPSG:4326',epsg:'EPSG:4326'},
       survey_mode:{mode:getProjectMode(p),source:'Bud'},
@@ -4814,6 +4958,7 @@ function currentBudProjectPackage(){
     survey_geojson:{
       type:'FeatureCollection',
       project_id:p.id,
+      project_uuid:p.project_uuid,
       crs_name:'EPSG:4326',
       features:(p.features||[]).map(f=>({type:'Feature',id:f.id,geometry:f.geometry,properties:f.properties}))
     },
@@ -4871,9 +5016,10 @@ async function ensureBudProjectSubfolders(dir){
 }
 function budScheduleCsvText(p){
   const headers = isSafetyMode(p)
-    ? ['tree_id','feature_type','species','age','stem_diameter','est_height','canopy_n','canopy_e','canopy_s','canopy_w','rpa_radius','physiological_condition','structural_condition','condition_comments','target_type','target_occupancy','defects','recommendation','work_spec','timing','priority','tpo_application_required','safety_comments','notes','x','y']
-    : ['tree_id','feature_type','species','age','category','stem_diameter','est_height','canopy_n','canopy_e','canopy_s','canopy_w','rpa_radius','first_branch_n','first_branch_e','first_branch_s','first_branch_w','canopy_clearance','physiological_condition','structural_condition','condition_comments','preliminary_management','remaining_years','notes','x','y'];
-  return [headers.join(',')].concat((p.features||[]).map(f=>headers.map(h=>csvCell(f.properties[h]??'')).join(','))).join('\n');
+    ? ['tree_id','surveyor_code','feature_type','species','age','stem_diameter','est_height','canopy_n','canopy_e','canopy_s','canopy_w','rpa_radius','physiological_condition','structural_condition','condition_comments','target_type','target_occupancy','defects','recommendation','work_spec','timing','priority','tpo_application_required','safety_comments','notes','x','y']
+    : ['tree_id','surveyor_code','feature_type','species','age','category','stem_diameter','est_height','canopy_n','canopy_e','canopy_s','canopy_w','rpa_radius','first_branch_n','first_branch_e','first_branch_s','first_branch_w','canopy_clearance','physiological_condition','structural_condition','condition_comments','preliminary_management','remaining_years','notes','x','y'];
+  const labels=headers.map(h=>h==='surveyor_code'?'Surveyor':h);
+  return [labels.join(',')].concat((p.features||[]).map(f=>headers.map(h=>csvCell(f.properties[h]??'')).join(','))).join('\n');
 }
 async function chooseBudProjectFolder(){
   const root=await chooseBudProjectsRoot();
@@ -5974,7 +6120,7 @@ function wireUi(){
   $('renameProjectBtn').onclick=async ()=>{ const p=ensureProject(); if(!p) return; const name=prompt('Rename project', p.name); if(!name) return; p.name=name.trim()||p.name; await saveCurrentProject(); await refreshProjects(p.id); showNotice('Project renamed.'); };
   $('archiveProjectBtn').onclick=async ()=>{ const p=ensureProject(); if(!p) return; p.archived = !p.archived; await saveCurrentProject(); await refreshProjects(); showNotice(p.archived ? 'Project archived.' : 'Project restored.'); };
   $('deleteProjectBtn').onclick=async ()=>{ const p=ensureProject(); if(!p) return; if(!confirm(`Delete ${p.name}?`)) return; await deleteProjectDb(p.id); state.currentProjectId=null; await refreshProjects(); showNotice('Project deleted.'); };
-  $('openProjectBtn').onclick=()=>{ if(!ensureProject()) return; showMap(); setTimeout(()=>{ rebuildMap(); fitMapToProject(); },80); startCompass(); if(!state.gpsTracking) startGpsTracking(); };
+  $('openProjectBtn').onclick=()=>{ if(!ensureProject()) return; if(window.BudLeafTeamsSurveyor && typeof window.BudLeafTeamsSurveyor.ensureCurrent==='function' && !window.BudLeafTeamsSurveyor.ensureCurrent()) return; showMap(); setTimeout(()=>{ rebuildMap(); fitMapToProject(); },80); startCompass(); if(!state.gpsTracking) startGpsTracking(); };
   $('surveyModeSelect').onchange=()=>{ updateBoundaryTerminology(null); };
   $('backToProjectsBtn').onclick=()=>{ closeSheets(); cancelRlbDrawing(false); stopGpsTracking(); showHome(); showGps('GPS paused.'); };
   if($('rlbStartFinishBtn')) $('rlbStartFinishBtn').onclick=toggleRlbStartFinish;
