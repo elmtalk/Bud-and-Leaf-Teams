@@ -1,0 +1,676 @@
+(function () {
+  'use strict';
+
+  const FIREBASE_VERSION = '13.3.0';
+  const FIREBASE_BASE = 'https://www.gstatic.com/firebasejs/' + FIREBASE_VERSION + '/';
+  const CONFIG_KEY = 'budleaf_firebase_config_v1';
+  const DEVICE_KEY = 'budleaf_cloud_device_id_v1';
+  const UPLOAD_PREFIX = 'budleaf_cloud_uploaded_';
+
+  let api = null;
+  let app = null;
+  let auth = null;
+  let db = null;
+  let currentUser = null;
+  let currentUnsubscribe = null;
+  let currentProjectUuid = '';
+  let syncTimer = null;
+  let connecting = false;
+
+  function el(id) { return document.getElementById(id); }
+
+  function cloneJson(value) {
+    return value == null ? value : JSON.parse(JSON.stringify(value));
+  }
+
+  function deviceId() {
+    let value = '';
+    try { value = localStorage.getItem(DEVICE_KEY) || ''; } catch (e) {}
+    if (value) return value;
+    try {
+      value = (globalThis.crypto && crypto.randomUUID) ? crypto.randomUUID() : ('device_' + Date.now() + '_' + Math.random().toString(36).slice(2));
+      localStorage.setItem(DEVICE_KEY, value);
+    } catch (e) {
+      value = 'device_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+    }
+    return value;
+  }
+
+  function setStatus(message, tone) {
+    const box = el('cloudStatus');
+    if (!box) return;
+    box.textContent = message;
+    box.dataset.tone = tone || '';
+  }
+
+  function projectUploadKey(projectUuid) {
+    return UPLOAD_PREFIX + String(projectUuid || '');
+  }
+
+  function readUploadMap(projectUuid) {
+    try { return JSON.parse(localStorage.getItem(projectUploadKey(projectUuid)) || '{}') || {}; }
+    catch (e) { return {}; }
+  }
+
+  function writeUploadMap(projectUuid, map) {
+    try { localStorage.setItem(projectUploadKey(projectUuid), JSON.stringify(map || {})); }
+    catch (e) {}
+  }
+
+  function savedConfig() {
+    try {
+      const raw = localStorage.getItem(CONFIG_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function saveConfig(config) {
+    localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
+  }
+
+  function forgetConfig() {
+    try { localStorage.removeItem(CONFIG_KEY); } catch (e) {}
+  }
+
+  function parseConfigText(text) {
+    let raw = String(text || '').trim();
+    if (!raw) throw new Error('Paste the Firebase web app config first.');
+
+    const braceStart = raw.indexOf('{');
+    const braceEnd = raw.lastIndexOf('}');
+    if (braceStart >= 0 && braceEnd > braceStart) raw = raw.slice(braceStart, braceEnd + 1);
+
+    try {
+      return JSON.parse(raw);
+    } catch (e) {
+      const jsonish = raw
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/\/\/.*$/gm, '')
+        .replace(/([{,]\s*)([A-Za-z_$][\w$]*)(\s*:)/g, '$1"$2"$3')
+        .replace(/'/g, '"')
+        .replace(/,\s*}/g, '}');
+      try { return JSON.parse(jsonish); }
+      catch (err) { throw new Error('Could not read the Firebase config. Paste the firebaseConfig object from Firebase Project settings.'); }
+    }
+  }
+
+  function validateConfig(config) {
+    if (!config || typeof config !== 'object') throw new Error('Firebase config is missing.');
+    const required = ['apiKey', 'projectId', 'appId'];
+    const missing = required.filter(key => !config[key]);
+    if (missing.length) throw new Error('Firebase config is missing: ' + missing.join(', '));
+    return config;
+  }
+
+  async function loadFirebaseApi() {
+    if (api) return api;
+    const [appMod, authMod, fsMod] = await Promise.all([
+      import(FIREBASE_BASE + 'firebase-app.js'),
+      import(FIREBASE_BASE + 'firebase-auth.js'),
+      import(FIREBASE_BASE + 'firebase-firestore.js')
+    ]);
+    api = Object.assign({}, appMod, authMod, fsMod);
+    return api;
+  }
+
+  async function connect(configOverride, quiet) {
+    if (db && currentUser) {
+      renderState();
+      return true;
+    }
+    if (connecting) return false;
+    connecting = true;
+    try {
+      const config = validateConfig(configOverride || savedConfig());
+      setStatus('Connecting to Firebase…');
+      const f = await loadFirebaseApi();
+      const appName = 'budleaf-cloud';
+      const existing = f.getApps().find(item => item.name === appName);
+      app = existing || f.initializeApp(config, appName);
+
+      auth = f.getAuth(app);
+      if (!auth.currentUser) await f.signInAnonymously(auth);
+      currentUser = auth.currentUser;
+
+      try {
+        db = f.initializeFirestore(app, {
+          localCache: f.persistentLocalCache({
+            tabManager: f.persistentMultipleTabManager()
+          })
+        });
+      } catch (e) {
+        db = f.getFirestore(app);
+      }
+
+      setStatus('Cloud connected · local saves remain active.', 'ok');
+      renderState();
+      const project = (typeof window.currentProject === 'function') ? window.currentProject() : null;
+      if (project) projectChanged(project);
+      if (!quiet) await listCloudProjects();
+      return true;
+    } catch (err) {
+      console.warn('Bud&Leaf cloud connection failed', err);
+      setStatus('Cloud not connected: ' + (err && err.message ? err.message : err), 'error');
+      renderState();
+      return false;
+    } finally {
+      connecting = false;
+    }
+  }
+
+  function isProjectCloudEnabled(project) {
+    return !!(project && project.project_meta && project.project_meta.cloud_enabled);
+  }
+
+  function cleanProjectMeta(meta) {
+    const out = cloneJson(meta || {}) || {};
+    delete out._linkedProjectFolderHandle;
+    return out;
+  }
+
+  function cloudProjectPayload(project) {
+    return {
+      app: 'Bud&Leaf',
+      cloud_schema: 'budleaf-cloud-v0.1',
+      project_uuid: project.project_uuid,
+      schema_version: project.schema_version || '1.1',
+      name: project.name || 'Project',
+      survey_mode: project.survey_mode || 'BS5837',
+      created_at: project.created_at || '',
+      updated_at: project.updated_at || '',
+      schema: cloneJson(project.schema || []),
+      project_meta: cleanProjectMeta(project.project_meta),
+      red_line_boundary: cloneJson(project.red_line_boundary || null),
+      topo_reference: cloneJson(project.topo_reference || null),
+      context_features: cloneJson(project.context_features || []),
+      source_device_id: deviceId(),
+      cloud_written_at: api.serverTimestamp()
+    };
+  }
+
+  function cloudFeaturePayload(feature) {
+    const copy = cloneJson(feature) || {};
+    copy.properties = copy.properties || {};
+    const photos = Array.isArray(copy.properties.photos) ? copy.properties.photos : [];
+    copy.properties.photo_count = photos.length;
+    copy.properties.photo_names = photos.map(p => p && (p.name || p.filename) || '').filter(Boolean);
+    delete copy.properties.photos;
+    const uuid = String(copy.properties.feature_uuid || '');
+    return {
+      feature_uuid: uuid,
+      updated_at: copy.properties.updated_at || '',
+      surveyor_code: copy.properties.surveyor_code || '',
+      surveyor_name: copy.properties.surveyor_name || '',
+      source_device_id: deviceId(),
+      deleted: false,
+      feature: copy,
+      cloud_written_at: api.serverTimestamp()
+    };
+  }
+
+  function ensureDeletedList(project) {
+    project.project_meta = project.project_meta || {};
+    if (!Array.isArray(project.project_meta.cloud_deleted_features)) project.project_meta.cloud_deleted_features = [];
+    return project.project_meta.cloud_deleted_features;
+  }
+
+  function noteFeatureDeleted(project, feature) {
+    if (!project || !feature || !feature.properties || !feature.properties.feature_uuid) return;
+    const list = ensureDeletedList(project);
+    const uuid = String(feature.properties.feature_uuid);
+    const when = (typeof window.nowIso === 'function') ? window.nowIso() : new Date().toISOString();
+    const existing = list.find(item => String(item && item.feature_uuid || '') === uuid);
+    if (existing) existing.updated_at = when;
+    else list.push({ feature_uuid: uuid, updated_at: when });
+    scheduleSync(project);
+  }
+
+  async function pushDeletedFeatures(project) {
+    const list = ensureDeletedList(project);
+    if (!list.length) return 0;
+    let count = 0;
+    for (const item of list) {
+      if (!item || !item.feature_uuid) continue;
+      const ref = api.doc(db, 'budleaf_projects', project.project_uuid, 'features', String(item.feature_uuid));
+      await api.setDoc(ref, {
+        feature_uuid: String(item.feature_uuid),
+        updated_at: item.updated_at || '',
+        source_device_id: deviceId(),
+        deleted: true,
+        cloud_written_at: api.serverTimestamp()
+      }, { merge: true });
+      count += 1;
+    }
+    return count;
+  }
+
+  async function pushProject(project, force) {
+    if (!project || !project.project_uuid || !isProjectCloudEnabled(project)) return false;
+    if (!db && !(await connect(null, true))) return false;
+
+    const projectRef = api.doc(db, 'budleaf_projects', project.project_uuid);
+    await api.setDoc(projectRef, cloudProjectPayload(project), { merge: true });
+
+    const uploadMap = readUploadMap(project.project_uuid);
+    let featureWrites = 0;
+    const features = Array.isArray(project.features) ? project.features : [];
+
+    for (const feature of features) {
+      const props = feature && feature.properties || {};
+      const uuid = String(props.feature_uuid || '');
+      if (!uuid) continue;
+      const stamp = String(props.updated_at || '');
+      if (!force && uploadMap[uuid] === stamp) continue;
+      const ref = api.doc(db, 'budleaf_projects', project.project_uuid, 'features', uuid);
+      await api.setDoc(ref, cloudFeaturePayload(feature), { merge: true });
+      uploadMap[uuid] = stamp;
+      featureWrites += 1;
+    }
+
+    const deletedWrites = await pushDeletedFeatures(project);
+    writeUploadMap(project.project_uuid, uploadMap);
+    setStatus('Cloud synced · ' + featureWrites + ' feature change' + (featureWrites === 1 ? '' : 's') + (deletedWrites ? ' · ' + deletedWrites + ' deletion(s)' : '') + '.', 'ok');
+    ensureProjectListener(project);
+    return true;
+  }
+
+  function scheduleSync(project) {
+    if (!project || !isProjectCloudEnabled(project)) return;
+    clearTimeout(syncTimer);
+    syncTimer = setTimeout(function () {
+      pushProject(project, false).catch(function (err) {
+        console.warn('Bud&Leaf cloud sync failed', err);
+        setStatus('Saved locally · cloud sync pending.', 'warn');
+      });
+    }, 900);
+  }
+
+  function featureTime(feature) {
+    return String(feature && feature.properties && feature.properties.updated_at || '');
+  }
+
+  function remoteTime(remote) {
+    return String(remote && (remote.updated_at || (remote.feature && remote.feature.properties && remote.feature.properties.updated_at)) || '');
+  }
+
+  function addSurveyorToRegistry(project, props) {
+    const code = String(props && props.surveyor_code || '').trim().toUpperCase();
+    const name = String(props && props.surveyor_name || '').trim();
+    if (!code || !name) return;
+    project.project_meta = project.project_meta || {};
+    const registry = Array.isArray(project.project_meta.teams_surveyors) ? project.project_meta.teams_surveyors : [];
+    if (!registry.some(entry => String(entry && entry.code || '').toUpperCase() === code)) {
+      registry.push({ code: code, name: name });
+      project.project_meta.teams_surveyors = registry;
+    }
+  }
+
+  async function applyRemoteSnapshot(projectUuid, snapshot) {
+    const project = (typeof window.currentProject === 'function') ? window.currentProject() : null;
+    if (!project || String(project.project_uuid || '') !== String(projectUuid)) return;
+
+    let changed = false;
+    const uploadMap = readUploadMap(projectUuid);
+    project.features = Array.isArray(project.features) ? project.features : [];
+    const deletedList = ensureDeletedList(project);
+
+    snapshot.docChanges().forEach(change => {
+      const remote = change.doc.data() || {};
+      const uuid = String(remote.feature_uuid || change.doc.id || '');
+      if (!uuid) return;
+      const index = project.features.findIndex(feature => String(feature && feature.properties && feature.properties.feature_uuid || '') === uuid);
+
+      if (remote.deleted) {
+        if (index >= 0) {
+          project.features.splice(index, 1);
+          changed = true;
+        }
+        if (!deletedList.some(item => String(item && item.feature_uuid || '') === uuid)) {
+          deletedList.push({ feature_uuid: uuid, updated_at: remote.updated_at || '' });
+        }
+        delete uploadMap[uuid];
+        return;
+      }
+
+      const incoming = cloneJson(remote.feature);
+      if (!incoming || !incoming.properties) return;
+      incoming.properties.feature_uuid = incoming.properties.feature_uuid || uuid;
+
+      if (index < 0) {
+        incoming.properties.photos = [];
+        project.features.push(incoming);
+        addSurveyorToRegistry(project, incoming.properties);
+        uploadMap[uuid] = String(incoming.properties.updated_at || '');
+        changed = true;
+        return;
+      }
+
+      const local = project.features[index];
+      const localStamp = featureTime(local);
+      const incomingStamp = remoteTime(remote);
+      if (incomingStamp && incomingStamp > localStamp) {
+        const localPhotos = Array.isArray(local.properties && local.properties.photos) ? local.properties.photos : [];
+        incoming.properties.photos = localPhotos;
+        project.features[index] = incoming;
+        addSurveyorToRegistry(project, incoming.properties);
+        uploadMap[uuid] = String(incoming.properties.updated_at || '');
+        changed = true;
+      } else if (localStamp && localStamp > incomingStamp) {
+        scheduleSync(project);
+      }
+    });
+
+    writeUploadMap(projectUuid, uploadMap);
+    if (!changed) return;
+
+    project.updated_at = (typeof window.nowIso === 'function') ? window.nowIso() : new Date().toISOString();
+    if (typeof window.putProjectDb === 'function') await window.putProjectDb(project);
+    if (typeof window.renderCurrentProjectSummary === 'function') window.renderCurrentProjectSummary();
+    if (typeof window.renderProjectList === 'function') window.renderProjectList();
+    if (typeof window.renderSetupStatus === 'function') window.renderSetupStatus();
+    if (typeof window.rebuildMap === 'function') window.rebuildMap();
+    setStatus('Cloud received collaborator changes.', 'ok');
+  }
+
+  function stopProjectListener() {
+    if (currentUnsubscribe) {
+      try { currentUnsubscribe(); } catch (e) {}
+    }
+    currentUnsubscribe = null;
+    currentProjectUuid = '';
+  }
+
+  function ensureProjectListener(project) {
+    if (!db || !project || !project.project_uuid || !isProjectCloudEnabled(project)) {
+      stopProjectListener();
+      return;
+    }
+    if (currentUnsubscribe && currentProjectUuid === project.project_uuid) return;
+    stopProjectListener();
+    currentProjectUuid = project.project_uuid;
+    const ref = api.collection(db, 'budleaf_projects', project.project_uuid, 'features');
+    currentUnsubscribe = api.onSnapshot(ref, function (snapshot) {
+      applyRemoteSnapshot(project.project_uuid, snapshot).catch(function (err) {
+        console.warn('Bud&Leaf incoming cloud update failed', err);
+        setStatus('Cloud update could not be applied: ' + (err.message || err), 'error');
+      });
+    }, function (err) {
+      console.warn('Bud&Leaf cloud listener failed', err);
+      setStatus('Cloud listener stopped: ' + (err.message || err), 'error');
+    });
+  }
+
+  async function enableCurrentProject() {
+    const project = (typeof window.currentProject === 'function') ? window.currentProject() : null;
+    if (!project) {
+      setStatus('Select or create a project first.', 'warn');
+      return;
+    }
+    if (!(await connect(null, true))) return;
+    project.project_meta = project.project_meta || {};
+    project.project_meta.cloud_enabled = true;
+    if (typeof window.saveCurrentProject === 'function') await window.saveCurrentProject(true);
+    await pushProject(project, true);
+    ensureProjectListener(project);
+    renderState();
+  }
+
+  async function disableCurrentProject() {
+    const project = (typeof window.currentProject === 'function') ? window.currentProject() : null;
+    if (!project) return;
+    project.project_meta = project.project_meta || {};
+    project.project_meta.cloud_enabled = false;
+    if (typeof window.saveCurrentProject === 'function') await window.saveCurrentProject(true);
+    stopProjectListener();
+    setStatus('Cloud sync disabled for this project. Local saving is unchanged.', 'ok');
+    renderState();
+  }
+
+  async function syncNow() {
+    const project = (typeof window.currentProject === 'function') ? window.currentProject() : null;
+    if (!project) {
+      setStatus('Select a project first.', 'warn');
+      return;
+    }
+    if (!isProjectCloudEnabled(project)) {
+      setStatus('Enable cloud for this project first.', 'warn');
+      return;
+    }
+    await pushProject(project, true);
+  }
+
+  async function listCloudProjects() {
+    if (!db && !(await connect(null, true))) return;
+    const box = el('cloudProjectsList');
+    if (box) box.innerHTML = '<div class="clean-muted">Loading cloud projects…</div>';
+    try {
+      const snap = await api.getDocs(api.collection(db, 'budleaf_projects'));
+      const rows = [];
+      snap.forEach(docSnap => {
+        const data = docSnap.data() || {};
+        rows.push({
+          uuid: String(data.project_uuid || docSnap.id),
+          name: String(data.name || 'Project'),
+          updated_at: String(data.updated_at || ''),
+          mode: String(data.survey_mode || '')
+        });
+      });
+      rows.sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+      if (!box) return;
+      if (!rows.length) {
+        box.innerHTML = '<div class="clean-muted">No cloud projects yet.</div>';
+        return;
+      }
+      box.innerHTML = rows.map(row =>
+        '<div class="project-item"><div class="project-meta"><div class="project-title">' +
+        escapeHtmlSafe(row.name) + '</div><div class="muted">' +
+        escapeHtmlSafe(row.mode) + ' · ' + escapeHtmlSafe(row.updated_at.replace('T', ' ').slice(0, 16) || 'date unknown') +
+        '</div></div><div class="project-actions"><button class="btn" data-cloud-open="' +
+        escapeHtmlSafe(row.uuid) + '">Open</button></div></div>'
+      ).join('');
+      box.querySelectorAll('[data-cloud-open]').forEach(button => {
+        button.onclick = function () {
+          openCloudProject(button.dataset.cloudOpen).catch(function (err) {
+            setStatus('Could not open cloud project: ' + (err.message || err), 'error');
+          });
+        };
+      });
+    } catch (err) {
+      console.warn('Could not list cloud projects', err);
+      if (box) box.innerHTML = '<div class="clean-muted">Could not list cloud projects.</div>';
+      setStatus('Could not list cloud projects: ' + (err.message || err), 'error');
+    }
+  }
+
+  function escapeHtmlSafe(value) {
+    return String(value == null ? '' : value).replace(/[&<>"']/g, function (char) {
+      return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[char];
+    });
+  }
+
+  async function openCloudProject(projectUuid) {
+    if (!db && !(await connect(null, true))) return;
+    const rootSnap = await api.getDoc(api.doc(db, 'budleaf_projects', projectUuid));
+    if (!rootSnap.exists()) throw new Error('Cloud project not found.');
+    const root = rootSnap.data() || {};
+    const featureSnap = await api.getDocs(api.collection(db, 'budleaf_projects', projectUuid, 'features'));
+
+    let localProjects = [];
+    if (typeof window.listProjectsDb === 'function') localProjects = await window.listProjectsDb();
+    let project = localProjects.find(item => String(item && item.project_uuid || '') === String(projectUuid)) || null;
+
+    if (!project) {
+      if (typeof window.blankProject !== 'function') throw new Error('Bud&Leaf project creator is unavailable.');
+      project = window.blankProject(root.name || 'Cloud Project');
+      project.project_uuid = String(projectUuid);
+      project.id = project.id || ('p_' + Math.random().toString(36).slice(2, 10));
+      project.features = [];
+    }
+
+    project.name = root.name || project.name;
+    project.schema_version = root.schema_version || project.schema_version || '1.1';
+    project.survey_mode = root.survey_mode || project.survey_mode || 'BS5837';
+    project.created_at = root.created_at || project.created_at;
+    project.updated_at = root.updated_at || project.updated_at;
+    if (Array.isArray(root.schema) && root.schema.length) project.schema = cloneJson(root.schema);
+    project.project_meta = Object.assign({}, project.project_meta || {}, cloneJson(root.project_meta || {}), {
+      project_name: root.name || project.name,
+      project_uuid: String(projectUuid),
+      cloud_enabled: true
+    });
+    if (Object.prototype.hasOwnProperty.call(root, 'red_line_boundary')) project.red_line_boundary = cloneJson(root.red_line_boundary);
+    if (Object.prototype.hasOwnProperty.call(root, 'topo_reference')) project.topo_reference = cloneJson(root.topo_reference);
+    if (Object.prototype.hasOwnProperty.call(root, 'context_features')) project.context_features = cloneJson(root.context_features);
+
+    const uploadMap = readUploadMap(projectUuid);
+    project.features = Array.isArray(project.features) ? project.features : [];
+
+    featureSnap.forEach(docSnap => {
+      const remote = docSnap.data() || {};
+      const uuid = String(remote.feature_uuid || docSnap.id);
+      const index = project.features.findIndex(feature => String(feature && feature.properties && feature.properties.feature_uuid || '') === uuid);
+      if (remote.deleted) {
+        if (index >= 0) project.features.splice(index, 1);
+        return;
+      }
+      const incoming = cloneJson(remote.feature);
+      if (!incoming || !incoming.properties) return;
+      incoming.properties.photos = index >= 0 && Array.isArray(project.features[index].properties && project.features[index].properties.photos)
+        ? project.features[index].properties.photos
+        : [];
+      if (index < 0 || remoteTime(remote) > featureTime(project.features[index])) {
+        if (index < 0) project.features.push(incoming);
+        else project.features[index] = incoming;
+      }
+      addSurveyorToRegistry(project, incoming.properties);
+      uploadMap[uuid] = String(incoming.properties.updated_at || '');
+    });
+
+    writeUploadMap(projectUuid, uploadMap);
+    if (typeof window.repairProjectSchema === 'function') window.repairProjectSchema(project);
+    if (typeof window.putProjectDb === 'function') await window.putProjectDb(project);
+    if (typeof window.refreshProjects === 'function') await window.refreshProjects(project.id);
+    if (typeof window.afterProjectOpenedUi === 'function') window.afterProjectOpenedUi();
+    ensureProjectListener(project);
+    setStatus('Cloud project opened locally. It will continue to work without signal.', 'ok');
+    renderState();
+  }
+
+  function projectChanged(project) {
+    renderState();
+    if (!project || !isProjectCloudEnabled(project)) {
+      stopProjectListener();
+      return;
+    }
+    const config = savedConfig();
+    if (!config) {
+      setStatus('This project is cloud-enabled, but this device has no Firebase connection yet.', 'warn');
+      return;
+    }
+    connect(config, true).then(function (ok) {
+      if (ok) {
+        ensureProjectListener(project);
+        scheduleSync(project);
+      }
+    });
+  }
+
+  function renderState() {
+    const project = (typeof window.currentProject === 'function') ? window.currentProject() : null;
+    const connected = !!(db && currentUser);
+    const enabled = isProjectCloudEnabled(project);
+
+    const enableBtn = el('cloudEnableProjectBtn');
+    if (enableBtn) {
+      enableBtn.disabled = !project;
+      enableBtn.textContent = enabled ? 'Disable cloud for project' : 'Enable cloud for project';
+    }
+
+    const syncBtn = el('cloudSyncNowBtn');
+    if (syncBtn) syncBtn.disabled = !project || !enabled;
+
+    const browseBtn = el('cloudBrowseBtn');
+    if (browseBtn) browseBtn.disabled = !connected;
+
+    const connection = el('cloudConnectionSummary');
+    if (connection) {
+      const config = savedConfig();
+      connection.textContent = connected
+        ? 'Firebase connected · ' + (config && config.projectId ? config.projectId : 'project')
+        : (config ? 'Firebase config saved · not connected yet' : 'No cloud account connected');
+    }
+
+    if (project && enabled && connected && !currentUnsubscribe) ensureProjectListener(project);
+  }
+
+  function wireUi() {
+    const input = el('firebaseConfigInput');
+    const config = savedConfig();
+    if (input && config) input.value = JSON.stringify(config, null, 2);
+
+    const connectBtn = el('cloudConnectBtn');
+    if (connectBtn) connectBtn.onclick = async function () {
+      try {
+        const parsed = validateConfig(parseConfigText(input ? input.value : ''));
+        saveConfig(parsed);
+        await connect(parsed, false);
+      } catch (err) {
+        setStatus(err.message || String(err), 'error');
+      }
+    };
+
+    const forgetBtn = el('cloudForgetBtn');
+    if (forgetBtn) forgetBtn.onclick = function () {
+      stopProjectListener();
+      forgetConfig();
+      app = auth = db = currentUser = null;
+      if (input) input.value = '';
+      setStatus('Cloud connection forgotten on this device. Local projects are unchanged.', 'ok');
+      renderState();
+    };
+
+    const enableBtn = el('cloudEnableProjectBtn');
+    if (enableBtn) enableBtn.onclick = async function () {
+      const project = (typeof window.currentProject === 'function') ? window.currentProject() : null;
+      if (isProjectCloudEnabled(project)) await disableCurrentProject();
+      else await enableCurrentProject();
+    };
+
+    const syncBtn = el('cloudSyncNowBtn');
+    if (syncBtn) syncBtn.onclick = function () {
+      syncNow().catch(function (err) { setStatus('Cloud sync failed: ' + (err.message || err), 'error'); });
+    };
+
+    const browseBtn = el('cloudBrowseBtn');
+    if (browseBtn) browseBtn.onclick = function () {
+      listCloudProjects().catch(function (err) { setStatus('Could not load cloud projects: ' + (err.message || err), 'error'); });
+    };
+
+    renderState();
+
+    if (config) {
+      connect(config, true).then(function (ok) {
+        if (ok) listCloudProjects();
+      });
+    } else {
+      setStatus('Local-only mode. Connect Firebase only if you want cloud collaboration.', 'ok');
+    }
+  }
+
+  window.BudLeafCloud = {
+    connect: connect,
+    scheduleSync: scheduleSync,
+    syncNow: syncNow,
+    projectChanged: projectChanged,
+    noteFeatureDeleted: noteFeatureDeleted,
+    listCloudProjects: listCloudProjects,
+    openCloudProject: openCloudProject,
+    renderState: renderState,
+    isConnected: function () { return !!(db && currentUser); }
+  };
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wireUi);
+  else wireUi();
+})();
