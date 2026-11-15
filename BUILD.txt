@@ -1,55 +1,38 @@
-Bud&Leaf Teams v7a - identity checkpoint
+Bud&Leaf v7b - experimental local-first Firebase sync
 
 Base:
-- v6b stable recovery build
-- rollback branch: v6b-stable-checkpoint
+- v7a identity checkpoint
+- rollback branch: v7a-identity-checkpoint
 
-This checkpoint adds the Teams v1.1 identity/provenance layer without cloud sync.
+WHAT THIS CHECKPOINT DOES
+- keeps all existing local IndexedDB/project-folder saving
+- adds optional Firebase connection using the user's own Firebase project
+- uses anonymous Firebase Authentication for this prototype
+- lets a project be cloud-enabled or remain local-only
+- syncs project metadata and survey features by project_uuid / feature_uuid
+- receives collaborator-created features through a live Firestore listener
+- sends local edits back to Firestore
+- carries deletion tombstones so deleted features can be removed on collaborators' devices
+- lets another device browse/open projects in the same Firebase backend
+- shows Surveyor provenance when a feature is opened
+- keeps .bud / ZIP backup/export unchanged
 
-PROJECT IDENTITY
-- schema_version: 1.1
-- project_uuid: permanent cross-device project identity
+NOT IN THIS CHECKPOINT
+- production invitation / membership permissions
+- Google/email sign-in
+- photo upload/sync
+- robust concurrent-edit conflict UI
+- cloud-provider abstraction beyond the first Firebase adapter
 
-FEATURE IDENTITY
-- tree_id remains the clean visible field ID: T1, T2, G1, etc.
-- capture_id preserves the field ID assigned at capture
-- final_id is reserved for later final renumbering
-- feature_uuid is the permanent hidden identity
-- surveyor_code is separate, e.g. JR / EH
-- surveyor_name is retained
-- created_at / updated_at are retained
+TEST INTENT
+1. Prove Bud&Leaf still works completely locally without Firebase.
+2. Connect one Firebase project on Phone A.
+3. Enable cloud for a Bud&Leaf project.
+4. Connect the same Firebase project on Phone B.
+5. Open the cloud project on Phone B.
+6. Add different T/G/H/W records on both phones.
+7. Confirm records appear on the other phone after connectivity returns.
 
-MULTI-SURVEYOR NUMBERING
-- each registered surveyor has their own T/G/H/W field sequence
-- JR can have T1 while EH can also have T1
-- another surveyor's records do not advance your sequence
-- legacy unassigned records still act as the common baseline
-
-GROUP STEMS
-- parent_id remains for compatibility
-- parent_feature_uuid is added so duplicate visible group IDs across surveyors do not collide
-
-UI / EXPORT
-- Current project shows Surveyor: JR
-- normal survey CSV contains a separate Surveyor column
-- full-field CSV and GeoJSON retain identity/provenance fields
-- project packages carry project_uuid and schema_version
-
-MIGRATION
-- existing projects are upgraded additively on open
-- existing features receive UUID/capture/final/timestamp fields if missing
-- existing visible IDs and survey data are preserved
-
-NOT ADDED YET
-- merge engine
-- conflict detection
-- Firebase/cloud sync
-- photo sync
-- final spatial renumbering
-
-Next test:
-1. One-phone regression test.
-2. Export a starter project.
-3. Open the same starter on two phones with different surveyor codes.
-4. Capture T1 independently on both.
-5. Build/test the offline merge engine.
+IMPORTANT
+This is a development checkpoint only. Use authenticated-test Firestore rules while testing.
+Do not use permissive public Firestore rules for production.
