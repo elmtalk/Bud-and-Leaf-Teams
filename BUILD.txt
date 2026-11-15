@@ -1,35 +1,55 @@
-Bud&Leaf Teams - surveyor registration checkpoint (safe v6b, full index)
-Base index: current live Teams recovery-v18 build
-Base Git blob SHA: 050fac77b03c4689146f66af35d07affb8961b52
-PWA cache: bud-leaf-teams-v6b-surveyor-full-index
+Bud&Leaf Teams v7a - identity checkpoint
 
-UPLOAD THESE FILES WHOLE:
-- index.html
-- teams-surveyor.js
-- service-worker.js
-- BUILD.txt
+Base:
+- v6b stable recovery build
+- rollback branch: v6b-stable-checkpoint
 
-No manual index editing is required.
+This checkpoint adds the Teams v1.1 identity/provenance layer without cloud sync.
 
-Adds:
-- surveyor name + unique 2–3 letter code before entering field map
-- project-level surveyor registry
-- duplicate-code rejection within the project
-- local device surveyor memory
-- surveyor gate on Current Project and Saved Project map-open routes
+PROJECT IDENTITY
+- schema_version: 1.1
+- project_uuid: permanent cross-device project identity
 
-Preserved:
-- recovery v18 / Stored Projects
-- Previous versions
-- linked-folder save/reopen
-- Share project ZIP
-- project creation/open/import
-- map/editor
-- exports
-- current phone layout/CSS
+FEATURE IDENTITY
+- tree_id remains the clean visible field ID: T1, T2, G1, etc.
+- capture_id preserves the field ID assigned at capture
+- final_id is reserved for later final renumbering
+- feature_uuid is the permanent hidden identity
+- surveyor_code is separate, e.g. JR / EH
+- surveyor_name is retained
+- created_at / updated_at are retained
 
-Not added yet:
-- feature_uuid
-- capture_id / multi-surveyor feature numbering
-- final_id
-- cloud/Firebase sync
+MULTI-SURVEYOR NUMBERING
+- each registered surveyor has their own T/G/H/W field sequence
+- JR can have T1 while EH can also have T1
+- another surveyor's records do not advance your sequence
+- legacy unassigned records still act as the common baseline
+
+GROUP STEMS
+- parent_id remains for compatibility
+- parent_feature_uuid is added so duplicate visible group IDs across surveyors do not collide
+
+UI / EXPORT
+- Current project shows Surveyor: JR
+- normal survey CSV contains a separate Surveyor column
+- full-field CSV and GeoJSON retain identity/provenance fields
+- project packages carry project_uuid and schema_version
+
+MIGRATION
+- existing projects are upgraded additively on open
+- existing features receive UUID/capture/final/timestamp fields if missing
+- existing visible IDs and survey data are preserved
+
+NOT ADDED YET
+- merge engine
+- conflict detection
+- Firebase/cloud sync
+- photo sync
+- final spatial renumbering
+
+Next test:
+1. One-phone regression test.
+2. Export a starter project.
+3. Open the same starter on two phones with different surveyor codes.
+4. Capture T1 independently on both.
+5. Build/test the offline merge engine.
