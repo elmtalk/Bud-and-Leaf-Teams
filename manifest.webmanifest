@@ -1,10 +1,10 @@
 {
-  "id": "/Bud-and-Leaf-Teams/",
+  "id": "./",
   "name": "Bud&Leaf Teams",
   "short_name": "Bud&Leaf Teams",
   "description": "Bud&Leaf Teams multi-surveyor tree survey app for BS5837 and Tree Safety field survey.",
-  "start_url": "/Bud-and-Leaf-Teams/index.html",
-  "scope": "/Bud-and-Leaf-Teams/",
+  "start_url": "./index.html",
+  "scope": "./",
   "display": "standalone",
   "display_override": [
     "standalone",
