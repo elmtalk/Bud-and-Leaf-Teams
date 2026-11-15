@@ -18,9 +18,7 @@
 
   function suggestCode(name) {
     const parts = cleanName(name).split(/\s+/).filter(Boolean);
-    if (parts.length >= 2) {
-      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-    }
+    if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
     return parts.length ? parts[0].slice(0, 2).toUpperCase() : '';
   }
 
@@ -53,7 +51,6 @@
 
     const cleaned = [];
     const seen = new Set();
-
     raw.forEach(function (entry) {
       const name = cleanName(entry && (entry.name || entry.surveyor_name));
       const code = cleanCode(entry && (entry.code || entry.surveyor_code));
@@ -83,15 +80,11 @@
       const code = cleanCode(raw.code);
       if (!name || code.length < 2) return null;
 
-      const registry = getRegistry(project);
-      const registered = registry.find(function (entry) {
+      const registered = getRegistry(project).find(function (entry) {
         return entry.code === code;
       });
 
-      if (registered && registered.name.toLowerCase() !== name.toLowerCase()) {
-        return null;
-      }
-
+      if (registered && registered.name.toLowerCase() !== name.toLowerCase()) return null;
       return { name: name, code: code };
     } catch (e) {
       return null;
@@ -101,7 +94,6 @@
   function setLocalSurveyor(project, surveyor) {
     const key = localStorageKey(project);
     if (!key) return;
-
     try {
       localStorage.setItem(key, JSON.stringify({
         name: surveyor.name,
@@ -110,11 +102,20 @@
     } catch (e) {}
   }
 
-  function persistProject(project) {
+  function renderStatus() {
+    const el = document.getElementById('teamsSurveyorStatus');
+    if (!el) return;
+
+    const project = currentProjectSafe();
+    const surveyor = project ? getLocalSurveyor(project) : null;
+    el.textContent = surveyor ? ('Surveyor: ' + surveyor.code) : 'Surveyor: —';
+  }
+
+  function persistProject() {
     try {
       if (typeof window.saveCurrentProject === 'function') {
         Promise.resolve(window.saveCurrentProject(true)).catch(function (err) {
-          console.warn('Bud&Leaf Teams: surveyor registration saved in memory but project save failed.', err);
+          console.warn('Bud&Leaf Teams: surveyor registration save failed.', err);
         });
       }
     } catch (err) {
@@ -126,11 +127,13 @@
     if (!project) return false;
 
     const existingLocal = getLocalSurveyor(project);
-    if (existingLocal) return true;
+    if (existingLocal) {
+      renderStatus();
+      return true;
+    }
 
     const registry = getRegistry(project);
-
-    let name = cleanName(window.prompt('Surveyor name:', '') || '');
+    const name = cleanName(window.prompt('Surveyor name:', '') || '');
     if (!name) return false;
 
     let code = cleanCode(
@@ -142,9 +145,7 @@
 
     while (true) {
       if (code.length < 2) {
-        code = cleanCode(
-          window.prompt('Please enter a 2–3 letter surveyor code:', code) || ''
-        );
+        code = cleanCode(window.prompt('Please enter a 2–3 letter surveyor code:', code) || '');
         if (!code) return false;
         continue;
       }
@@ -157,6 +158,7 @@
 
       if (collision.name.toLowerCase() === name.toLowerCase()) {
         setLocalSurveyor(project, collision);
+        renderStatus();
         return true;
       }
 
@@ -167,7 +169,6 @@
           ''
         ) || ''
       );
-
       if (!code) return false;
     }
 
@@ -179,7 +180,8 @@
     project.project_meta.teams_enabled = true;
 
     setLocalSurveyor(project, surveyor);
-    persistProject(project);
+    persistProject();
+    renderStatus();
 
     try {
       if (typeof window.showNotice === 'function') {
@@ -190,38 +192,21 @@
     return true;
   }
 
-  function needsSurveyorForClick(target) {
-    if (!target) return false;
-    const button = target.closest && target.closest('button');
-    if (!button) return false;
-
-    return button.id === 'setupStartSurveyBtn' ||
-           button.id === 'setupOpenMapBtn' ||
-           button.id === 'openProjectBtn' ||
-           !!(button.dataset && button.dataset.projectOpen);
-  }
-
-  function onMapOpenCapture(event) {
-    if (!needsSurveyorForClick(event.target)) return;
-
+  function ensureCurrent() {
     const project = currentProjectSafe();
-    if (!project) return;
-
-    if (getLocalSurveyor(project)) return;
-
-    const ok = registerSurveyor(project);
-    if (!ok) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
+    if (!project) return false;
+    if (getLocalSurveyor(project)) {
+      renderStatus();
+      return true;
     }
+    return registerSurveyor(project);
   }
-
-  document.addEventListener('click', onMapOpenCapture, true);
 
   window.BudLeafTeamsSurveyor = {
     getCurrent: function () {
       return getLocalSurveyor(currentProjectSafe());
     },
+    ensureCurrent: ensureCurrent,
     register: function () {
       const project = currentProjectSafe();
       return project ? registerSurveyor(project) : false;
@@ -229,6 +214,13 @@
     list: function () {
       const project = currentProjectSafe();
       return project ? getRegistry(project).slice() : [];
-    }
+    },
+    renderStatus: renderStatus
   };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', renderStatus);
+  } else {
+    renderStatus();
+  }
 })();
