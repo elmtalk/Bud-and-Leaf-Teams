@@ -732,6 +732,32 @@ label.btn,
             </div>
           </details>
 
+          <details id="cloudCollaborationPanel" class="clean-details">
+            <summary>Cloud collaboration <span class="clean-muted">(experimental)</span></summary>
+            <div class="details-body">
+              <div id="cloudConnectionSummary" class="clean-muted">No cloud account connected</div>
+              <div id="cloudStatus" class="clean-muted" style="margin-top:6px">Local-only mode.</div>
+              <details class="clean-details" style="margin-top:10px">
+                <summary>Connect Firebase</summary>
+                <div class="details-body">
+                  <div class="clean-muted" style="margin-bottom:8px">Optional. Paste the Firebase web app configuration from your own Firebase project. Local saving continues whether cloud is connected or not.</div>
+                  <textarea id="firebaseConfigInput" rows="8" placeholder="Paste firebaseConfig here"></textarea>
+                  <div class="row" style="margin-top:10px">
+                    <button id="cloudConnectBtn" class="btn primary" type="button">Connect Firebase</button>
+                    <button id="cloudForgetBtn" class="btn" type="button">Forget connection</button>
+                  </div>
+                </div>
+              </details>
+              <div class="row project-only hidden" style="margin-top:10px">
+                <button id="cloudEnableProjectBtn" class="btn primary" type="button">Enable cloud for project</button>
+                <button id="cloudSyncNowBtn" class="btn" type="button">Sync now</button>
+                <button id="cloudBrowseBtn" class="btn" type="button">Cloud projects</button>
+              </div>
+              <div id="cloudProjectsList" class="project-list compact-project-list" style="margin-top:10px"></div>
+              <div class="clean-muted" style="margin-top:8px">Prototype scope: project + survey records only. Photos remain local in this checkpoint.</div>
+            </div>
+          </details>
+
           <details id="projectFileSetupDetails" class="clean-details">
             <summary>Project files</summary>
             <div class="details-body">
@@ -1675,6 +1701,7 @@ async function refreshProjects(selectId){
   syncProjectModeUi(currentProject());
   renderSetupStatus();
   updateBudAutoSaveUi();
+  if(window.BudLeafCloud && typeof window.BudLeafCloud.projectChanged==='function') window.BudLeafCloud.projectChanged(currentProject());
 }
 
 function renderProjectList(){
@@ -1809,6 +1836,7 @@ function afterProjectOpenedUi(){
   if(open){open.classList.add('hidden'); open.open=false;}
   updateProjectDashboardVisibility();
   updateProjectFileSafetyUi();
+  if(window.BudLeafCloud && typeof window.BudLeafCloud.projectChanged==='function') window.BudLeafCloud.projectChanged(currentProject());
 }
 function openExistingProjectPanel(){
   state.editingProjectDetailsId=null;
@@ -2449,6 +2477,7 @@ async function saveCurrentProject(force=false){
   }
   renderCurrentProjectSummary();
   renderProjectList();
+  if(window.BudLeafCloud && typeof window.BudLeafCloud.scheduleSync==='function') window.BudLeafCloud.scheduleSync(p);
 }
 
 function showHome(){ $('homeScreen').classList.remove('hidden'); $('mapScreen').classList.add('hidden'); renderSetupStatus(); }
@@ -2731,6 +2760,7 @@ function renderFeatureSheet(feature){
       <span class="mode-pill">${escapeHtml(modeLabel())}</span>
     </div>
     <div class="inline-grid">${fieldsHtml}</div>
+    ${props.surveyor_code ? '<div class="clean-muted" style="margin:8px 0">Surveyor: <strong>'+escapeHtml(props.surveyor_code)+'</strong>'+(props.surveyor_name ? ' · '+escapeHtml(props.surveyor_name) : '')+'</div>' : ''}
     <div class="feature-actions">
       <button class="btn" id="editGeometryBtn">Edit geometry</button>
       <button class="btn" id="saveDuplicateBtn">Save &amp; Duplicate</button>
@@ -4278,6 +4308,7 @@ async function handleDrawCreated(e){
 async function deleteSelectedFeature(){
   const p=currentProject(); if(!p||!state.selectedFeatureId) return;
   const deleting=getFeatureById(state.selectedFeatureId);
+  if(deleting && window.BudLeafCloud && typeof window.BudLeafCloud.noteFeatureDeleted==='function') window.BudLeafCloud.noteFeatureDeleted(p,deleting);
   p.features=p.features.filter(f=>f.id!==state.selectedFeatureId);
   if(deleting) p.group_stem_points=groupStemPoints(p).filter(stem=>!stemBelongsToFeature(stem,deleting));
   state.selectedFeatureId=null;
@@ -6200,5 +6231,6 @@ if('serviceWorker' in navigator){
 boot().catch(err=>{ console.error(err); alert('App failed to start: '+(err && err.message ? err.message : err)); });
 </script>
 <script src="./teams-surveyor.js"></script>
+<script src="./cloud-sync.js"></script>
 </body>
 </html>
