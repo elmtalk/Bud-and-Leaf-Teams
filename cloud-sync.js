@@ -78,9 +78,36 @@
     let raw = String(text || '').trim();
     if (!raw) throw new Error('Paste the Firebase web app config first.');
 
-    const braceStart = raw.indexOf('{');
-    const braceEnd = raw.lastIndexOf('}');
-    if (braceStart >= 0 && braceEnd > braceStart) raw = raw.slice(braceStart, braceEnd + 1);
+    // Accept either the firebaseConfig object on its own or the entire code
+    // snippet copied from Firebase's "Add Firebase SDK" screen.
+    const marker = raw.search(/(?:const|let|var)\s+firebaseConfig\s*=\s*{/);
+    if (marker >= 0) {
+      const objectStart = raw.indexOf('{', marker);
+      let depth = 0;
+      let quote = '';
+      let escaped = false;
+      let objectEnd = -1;
+      for (let i = objectStart; i < raw.length; i++) {
+        const ch = raw[i];
+        if (quote) {
+          if (escaped) escaped = false;
+          else if (ch === '\\') escaped = true;
+          else if (ch === quote) quote = '';
+          continue;
+        }
+        if (ch === '"' || ch === "'" || ch === '`') { quote = ch; continue; }
+        if (ch === '{') depth++;
+        else if (ch === '}') {
+          depth--;
+          if (depth === 0) { objectEnd = i; break; }
+        }
+      }
+      if (objectEnd > objectStart) raw = raw.slice(objectStart, objectEnd + 1);
+    } else {
+      const braceStart = raw.indexOf('{');
+      const braceEnd = raw.lastIndexOf('}');
+      if (braceStart >= 0 && braceEnd > braceStart) raw = raw.slice(braceStart, braceEnd + 1);
+    }
 
     try {
       return JSON.parse(raw);
@@ -92,7 +119,7 @@
         .replace(/'/g, '"')
         .replace(/,\s*}/g, '}');
       try { return JSON.parse(jsonish); }
-      catch (err) { throw new Error('Could not read the Firebase config. Paste the firebaseConfig object from Firebase Project settings.'); }
+      catch (err) { throw new Error('Could not read the Firebase config. Paste the firebaseConfig object or the full Firebase setup snippet.'); }
     }
   }
 
