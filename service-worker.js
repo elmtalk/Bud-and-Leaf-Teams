@@ -1,10 +1,11 @@
 const CACHE_PREFIX = 'bud-leaf-teams-';
-const CACHE_NAME = 'bud-leaf-teams-v7a-identity';
+const CACHE_NAME = 'bud-leaf-teams-v7b-cloud-sync';
 
 const CORE_FILES = [
   './index.html',
   './manifest.webmanifest',
-  './teams-surveyor.js'
+  './teams-surveyor.js',
+  './cloud-sync.js'
 ];
 
 self.addEventListener('install', function (event) {
