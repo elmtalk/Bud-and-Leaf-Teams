@@ -1,5 +1,5 @@
 const CACHE_PREFIX = 'bud-leaf-teams-';
-const CACHE_NAME = 'bud-leaf-teams-v7b-cloud-sync';
+const CACHE_NAME = 'bud-leaf-teams-v7b1-cloud-config';
 
 const CORE_FILES = [
   './index.html',
