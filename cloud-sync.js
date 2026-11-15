@@ -207,11 +207,11 @@
       survey_mode: project.survey_mode || 'BS5837',
       created_at: project.created_at || '',
       updated_at: project.updated_at || '',
-      schema: cloneJson(project.schema || []),
-      project_meta: cleanProjectMeta(project.project_meta),
-      red_line_boundary: cloneJson(project.red_line_boundary || null),
-      topo_reference: cloneJson(project.topo_reference || null),
-      context_features: cloneJson(project.context_features || []),
+      schema_json: JSON.stringify(cloneJson(project.schema || [])),
+      project_meta_json: JSON.stringify(cleanProjectMeta(project.project_meta)),
+      red_line_boundary_json: JSON.stringify(cloneJson(project.red_line_boundary || null)),
+      topo_reference_json: JSON.stringify(cloneJson(project.topo_reference || null)),
+      context_features_json: JSON.stringify(cloneJson(project.context_features || [])),
       source_device_id: deviceId(),
       cloud_written_at: api.serverTimestamp()
     };
@@ -232,7 +232,7 @@
       surveyor_name: copy.properties.surveyor_name || '',
       source_device_id: deviceId(),
       deleted: false,
-      feature: copy,
+      feature_json: JSON.stringify(copy),
       cloud_written_at: api.serverTimestamp()
     };
   }
@@ -334,6 +334,18 @@
     }
   }
 
+  function parseJsonField(value, fallback) {
+    if (typeof value !== 'string') return fallback;
+    try { return JSON.parse(value); }
+    catch (e) { return fallback; }
+  }
+
+  function remoteFeature(remote) {
+    const fromJson = parseJsonField(remote && remote.feature_json, null);
+    if (fromJson) return fromJson;
+    return cloneJson(remote && remote.feature);
+  }
+
   async function applyRemoteSnapshot(projectUuid, snapshot) {
     const project = (typeof window.currentProject === 'function') ? window.currentProject() : null;
     if (!project || String(project.project_uuid || '') !== String(projectUuid)) return;
@@ -361,7 +373,7 @@
         return;
       }
 
-      const incoming = cloneJson(remote.feature);
+      const incoming = remoteFeature(remote);
       if (!incoming || !incoming.properties) return;
       incoming.properties.feature_uuid = incoming.properties.feature_uuid || uuid;
 
@@ -541,15 +553,20 @@
     project.survey_mode = root.survey_mode || project.survey_mode || 'BS5837';
     project.created_at = root.created_at || project.created_at;
     project.updated_at = root.updated_at || project.updated_at;
-    if (Array.isArray(root.schema) && root.schema.length) project.schema = cloneJson(root.schema);
-    project.project_meta = Object.assign({}, project.project_meta || {}, cloneJson(root.project_meta || {}), {
+    const rootSchema = parseJsonField(root.schema_json, Array.isArray(root.schema) ? cloneJson(root.schema) : null);
+    if (Array.isArray(rootSchema) && rootSchema.length) project.schema = rootSchema;
+    const rootMeta = parseJsonField(root.project_meta_json, cloneJson(root.project_meta || {})) || {};
+    project.project_meta = Object.assign({}, project.project_meta || {}, rootMeta, {
       project_name: root.name || project.name,
       project_uuid: String(projectUuid),
       cloud_enabled: true
     });
-    if (Object.prototype.hasOwnProperty.call(root, 'red_line_boundary')) project.red_line_boundary = cloneJson(root.red_line_boundary);
-    if (Object.prototype.hasOwnProperty.call(root, 'topo_reference')) project.topo_reference = cloneJson(root.topo_reference);
-    if (Object.prototype.hasOwnProperty.call(root, 'context_features')) project.context_features = cloneJson(root.context_features);
+    const rootBoundary = parseJsonField(root.red_line_boundary_json, Object.prototype.hasOwnProperty.call(root, 'red_line_boundary') ? cloneJson(root.red_line_boundary) : project.red_line_boundary);
+    const rootTopo = parseJsonField(root.topo_reference_json, Object.prototype.hasOwnProperty.call(root, 'topo_reference') ? cloneJson(root.topo_reference) : project.topo_reference);
+    const rootContext = parseJsonField(root.context_features_json, Object.prototype.hasOwnProperty.call(root, 'context_features') ? cloneJson(root.context_features) : project.context_features);
+    project.red_line_boundary = rootBoundary;
+    project.topo_reference = rootTopo;
+    project.context_features = rootContext;
 
     const uploadMap = readUploadMap(projectUuid);
     project.features = Array.isArray(project.features) ? project.features : [];
@@ -562,7 +579,7 @@
         if (index >= 0) project.features.splice(index, 1);
         return;
       }
-      const incoming = cloneJson(remote.feature);
+      const incoming = remoteFeature(remote);
       if (!incoming || !incoming.properties) return;
       incoming.properties.photos = index >= 0 && Array.isArray(project.features[index].properties && project.features[index].properties.photos)
         ? project.features[index].properties.photos
