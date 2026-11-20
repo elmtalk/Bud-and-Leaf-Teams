@@ -3021,11 +3021,37 @@ async function addStemPointAtLatLng(latlng){
   rebuildMap();
   updateStemPlotterUi();
 }
-async function addGpsStemPoint(){
-  if(!state.stemPlotter) return;
-  if(!state.currentGpsLatLng){ showGps('Waiting for GPS fix…'); return; }
-  await addStemPointAtLatLng(state.currentGpsLatLng);
-  showGps('Group stem point added from GPS.');
+function addGpsStemPoint(){
+  const sp=state.stemPlotter;
+  if(!sp) return;
+  if(sp.gpsPending){ showNotice('Already requesting a GPS position.'); return; }
+  if(!navigator.geolocation){ showNotice('GPS unavailable on this device.'); return; }
+  sp.gpsPending=true;
+  const button=$('stemGpsBtn');
+  if(button) button.disabled=true;
+  showNotice('Getting current GPS location for stem…');
+  navigator.geolocation.getCurrentPosition(async pos=>{
+    if(state.stemPlotter!==sp) return;
+    const latlng={lat:pos.coords.latitude,lng:pos.coords.longitude};
+    try{
+      await addStemPointAtLatLng(latlng);
+      updateSurveyorMarker(latlng,pos.coords.accuracy);
+      showNotice('Stem added at current GPS location (accuracy ±'+Math.round(pos.coords.accuracy||0)+' m).');
+    }catch(err){
+      console.error('GPS stem save error:',err);
+      showNotice('Unable to save GPS stem point.');
+    }finally{
+      sp.gpsPending=false;
+      if(button) button.disabled=false;
+    }
+  },err=>{
+    if(state.stemPlotter!==sp) return;
+    sp.gpsPending=false;
+    if(button) button.disabled=false;
+    const reason=err.code===1?'Location permission denied':err.code===2?'GPS position unavailable':'GPS request timed out';
+    showGps(reason+'.');
+    showNotice(reason+'.');
+  },{enableHighAccuracy:true,maximumAge:0,timeout:15000});
 }
 async function undoLastStemPoint(){
   const p=ensureProject(); const sp=state.stemPlotter; if(!p||!sp) return;
