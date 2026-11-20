@@ -1,8 +1,9 @@
 const CACHE_PREFIX = 'bud-leaf-teams-';
-const CACHE_NAME = 'bud-leaf-teams-v12-feature-menu-20261120';
+const CACHE_NAME = 'bud-leaf-teams-v13-update-prompt-20261120';
 
 const CORE_FILES = [
   './index.html',
+  './app-updates.js',
   './manifest.webmanifest',
   './teams-surveyor.js',
   './cloud-sync.js'
@@ -32,6 +33,10 @@ self.addEventListener('install', function (event) {
   );
 });
 
+self.addEventListener('message', function(event){
+  if(event.data && event.data.type==='SKIP_WAITING') self.skipWaiting();
+});
+
 self.addEventListener('activate', function (event) {
   event.waitUntil(
     caches.keys()
@@ -59,6 +64,8 @@ self.addEventListener('fetch', function (event) {
 
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
+  // Never intercept/cache version checks (timestamp query produces unique URLs).
+  if (url.pathname.endsWith('/version.json')) return;
 
   event.respondWith(
     fetch(request)
