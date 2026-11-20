@@ -2492,6 +2492,8 @@ function updateCreateSheetForMode(){
     const t=state.createChoice && state.createChoice.featureType;
     $('walkBoundaryBtn').classList.toggle('hidden', t==='T');
   }
+  const type=state.createChoice && state.createChoice.featureType;
+  if($('startCreateBtn')) $('startCreateBtn').textContent=type==='T'?'Place individual':'Draw boundary';
 }
 async function openCreateSheet(){ if(!ensureProject()) return; if(window.BudLeafTeamsSurveyor && typeof window.BudLeafTeamsSurveyor.ensureCurrent==='function' && !window.BudLeafTeamsSurveyor.ensureCurrent()) return; if(!(await ensureProjectFileSetupForSurvey())) return; updateCreateSheetForMode(); $('modalBackdrop').classList.remove('hidden'); $('createSheet').classList.remove('hidden'); $('featureSheet').classList.add('hidden'); }
 function openFeatureSheet(featureId){
@@ -6271,7 +6273,7 @@ function wireUi(){
   $('importSurveyGeoJsonInput').addEventListener('change',e=>{ const f=e.target.files[0]; if(f) importGeoJSONFile(f); e.target.value=''; });
   $('redLineInput').addEventListener('change',e=>{ const f=e.target.files[0]; if(f) loadRedLineFile(f); e.target.value=''; });
   document.querySelectorAll('#categoryChoices [data-cat]').forEach(btn=>btn.addEventListener('click',()=>{ state.createChoice.category=btn.dataset.cat; document.querySelectorAll('#categoryChoices .option-btn').forEach(x=>x.classList.toggle('active',x===btn)); }));
-  document.querySelectorAll('#typeChoices [data-type]').forEach(btn=>btn.addEventListener('click',()=>{ state.createChoice.featureType=btn.dataset.type; document.querySelectorAll('#typeChoices .option-btn').forEach(x=>x.classList.toggle('active',x===btn)); }));
+  document.querySelectorAll('#typeChoices [data-type]').forEach(btn=>btn.addEventListener('click',()=>{ state.createChoice.featureType=btn.dataset.type; document.querySelectorAll('#typeChoices .option-btn').forEach(x=>x.classList.toggle('active',x===btn)); updateCreateSheetForMode(); }));
   $('startCreateBtn').onclick=startCreate;
   if($('walkBoundaryBtn')) $('walkBoundaryBtn').onclick=startWalkBoundary;
   if($('walkStartStopBtn')) $('walkStartStopBtn').onclick=toggleWalkBoundaryRecording;
