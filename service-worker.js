@@ -1,5 +1,5 @@
 const CACHE_PREFIX = 'bud-leaf-teams-';
-const CACHE_NAME = 'bud-leaf-teams-v8-hybrid-boundary-20261120';
+const CACHE_NAME = 'bud-leaf-teams-v8-hybrid-boundary-20261120-gps-stem';
 
 const CORE_FILES = [
   './index.html',
