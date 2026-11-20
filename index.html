@@ -889,7 +889,6 @@ label.btn,
     <div id="walkBoundaryStatus" class="walk-status">Walk boundary: 0 points</div>
     <div class="row">
       <button id="walkStartStopBtn" class="btn primary">👣 Start walk</button>
-      <button id="walkAddPointBtn" class="btn">Add GPS point</button>
       <button id="walkMapPointBtn" class="btn">Add map point</button>
       <button id="walkUndoBtn" class="btn">Undo point</button>
       <button id="walkFinishBtn" class="btn">Finish polygon</button>
@@ -3186,9 +3185,16 @@ function initMap(){
   });
   state.satLayer.addTo(state.map);
   state.drawLayer=L.featureGroup().addTo(state.map);
+  state.map.on('dragstart',()=>{if(state.walkBoundary)state.walkBoundary.lastMapDragMs=Date.now();});
+  state.map.on('dragend',()=>{if(state.walkBoundary)state.walkBoundary.lastMapDragMs=Date.now();});
   state.map.on('click', (ev)=>{
-    if(state.walkBoundary && state.walkBoundary.mapPointMode){
-      walkBoundaryAddCoord(ev.latlng.lng,ev.latlng.lat,false);
+    if(state.walkBoundary){
+      // No map-created vertices during GPS walking; panning and zooming are safe.
+      if(!state.walkBoundary.walking && state.walkBoundary.mapPointMode){
+        if(!state.walkBoundary.lastMapDragMs || Date.now()-state.walkBoundary.lastMapDragMs>350){
+          walkBoundaryAddCoord(ev.latlng.lng,ev.latlng.lat,false);
+        }
+      }
       return;
     }
     if(state.stemPlotter){ addStemPointAtLatLng(ev.latlng); return; }
@@ -4125,10 +4131,10 @@ function updateWalkBoundaryUi(){
   if($('walkFinishBtn')) $('walkFinishBtn').disabled=!(wb&&wb.coords.length>=3);
   if($('walkUndoBtn')) $('walkUndoBtn').disabled=!(wb&&wb.coords.length);
   if($('walkMapPointBtn')){
-    $('walkMapPointBtn').classList.toggle('primary',!!(wb&&wb.mapPointMode));
+    $('walkMapPointBtn').disabled=!!(wb&&wb.walking);
+    $('walkMapPointBtn').classList.toggle('primary',!!(wb&&!wb.walking&&wb.mapPointMode));
     $('walkMapPointBtn').textContent=wb&&wb.mapPointMode?'Stop map points':'Add map point';
   }
-  if($('walkAddPointBtn')) $('walkAddPointBtn').disabled=!!(wb&&wb.gpsPending);
   if($('walkBoundaryStatus')){
     if(!active){ $('walkBoundaryStatus').textContent='Walk boundary: 0 points'; return; }
     const n=wb.coords.length;
@@ -4142,7 +4148,7 @@ function startWalkBoundary(){
   if(type==='T'){ alert('Walk boundary is for groups, hedges and woodland.'); return; }
   closeSheets();
   if(!state.gpsTracking) startGpsTracking();
-  state.walkBoundary={featureType:type,category:state.createChoice.category,coords:[],walking:false,mapPointMode:false,gpsPending:false,lastAddedMs:0,previewLayer:null};
+  state.walkBoundary={featureType:type,category:state.createChoice.category,coords:[],walking:false,mapPointMode:false,lastAddedMs:0,lastMapDragMs:0,previewLayer:null};
   updateWalkBoundaryUi();
   showNotice('Walk boundary ready. Tap Start walk, then Stop walk and Finish polygon.');
 }
@@ -4151,6 +4157,7 @@ function toggleWalkBoundaryRecording(){
   if(!wb) return;
   if(wb.walking){
     wb.walking=false;
+    wb.mapPointMode=false;
     updateWalkBoundaryUi();
     showNotice(wb.coords.length>=3?'Walk stopped. Finish polygon when ready.':'Walk stopped. Add more points or start walking again.');
     return;
@@ -4172,8 +4179,8 @@ function walkBoundaryAutoPoint(latlng){
 }
 function walkToggleMapPoint(){
   const wb=state.walkBoundary;if(!wb)return;
+  if(wb.walking){showNotice('Stop walk before adding points manually.');return;}
   wb.mapPointMode=!wb.mapPointMode;
-  if(wb.mapPointMode) wb.walking=false;
   updateWalkBoundaryUi();
   showNotice(wb.mapPointMode?'Tap the map to extend the open boundary.':'Map-point mode off.');
 }
@@ -4184,31 +4191,6 @@ function walkUndoLastPoint(){
   updateWalkBoundaryPreview();
   updateWalkBoundaryUi();
   showNotice('Last boundary point removed.');
-}
-function walkAddGpsPoint(){
-  const wb=state.walkBoundary;
-  if(!wb)return;
-  if(wb.gpsPending){showNotice('GPS fix already being requested.');return;}
-  if(!navigator.geolocation){showNotice('GPS is not available on this device.');return;}
-  wb.gpsPending=true;
-  updateWalkBoundaryUi();
-  showNotice('Requesting a fresh GPS position…');
-  navigator.geolocation.getCurrentPosition(pos=>{
-    if(state.walkBoundary!==wb)return;
-    wb.gpsPending=false;
-    const latlng={lat:pos.coords.latitude,lng:pos.coords.longitude};
-    const added=walkBoundaryAddCoord(latlng.lng,latlng.lat,false);
-    updateSurveyorMarker(latlng,pos.coords.accuracy);
-    updateWalkBoundaryUi();
-    if(added)showNotice('GPS point '+wb.coords.length+' added (accuracy ±'+Math.round(pos.coords.accuracy||0)+' m).');
-  },err=>{
-    if(state.walkBoundary!==wb)return;
-    wb.gpsPending=false;
-    updateWalkBoundaryUi();
-    const why=err.code===1?'Location permission denied':err.code===2?'Position unavailable':'GPS timed out';
-    showNotice(why+'. Check location settings and try again.');
-    showGps(why+'.');
-  },{enableHighAccuracy:true,maximumAge:0,timeout:15000});
 }
 async function walkFinishPolygon(){
   const wb=state.walkBoundary;
@@ -6278,7 +6260,6 @@ function wireUi(){
   $('startCreateBtn').onclick=startCreate;
   if($('walkBoundaryBtn')) $('walkBoundaryBtn').onclick=startWalkBoundary;
   if($('walkStartStopBtn')) $('walkStartStopBtn').onclick=toggleWalkBoundaryRecording;
-  if($('walkAddPointBtn')) $('walkAddPointBtn').onclick=walkAddGpsPoint;
   if($('walkMapPointBtn')) $('walkMapPointBtn').onclick=walkToggleMapPoint;
   if($('walkUndoBtn')) $('walkUndoBtn').onclick=walkUndoLastPoint;
   if($('walkFinishBtn')) $('walkFinishBtn').onclick=walkFinishPolygon;
