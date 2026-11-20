@@ -4171,8 +4171,8 @@ function walkAddGpsPoint(){
     if(state.walkBoundary!==wb)return;
     wb.gpsPending=false;
     const latlng={lat:pos.coords.latitude,lng:pos.coords.longitude};
-    updateSurveyorMarker(latlng,pos.coords.accuracy);
     const added=walkBoundaryAddCoord(latlng.lng,latlng.lat,false);
+    updateSurveyorMarker(latlng,pos.coords.accuracy);
     updateWalkBoundaryUi();
     if(added)showNotice('GPS point '+wb.coords.length+' added (accuracy ±'+Math.round(pos.coords.accuracy||0)+' m).');
   },err=>{
