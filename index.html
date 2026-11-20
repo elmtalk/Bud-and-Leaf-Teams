@@ -890,6 +890,8 @@ label.btn,
     <div class="row">
       <button id="walkStartStopBtn" class="btn primary">👣 Start walk</button>
       <button id="walkAddPointBtn" class="btn">Add GPS point</button>
+      <button id="walkMapPointBtn" class="btn">Add map point</button>
+      <button id="walkUndoBtn" class="btn">Undo point</button>
       <button id="walkFinishBtn" class="btn">Finish polygon</button>
       <button id="walkCancelBtn" class="btn warn">Cancel</button>
     </div>
@@ -3159,6 +3161,10 @@ function initMap(){
   state.satLayer.addTo(state.map);
   state.drawLayer=L.featureGroup().addTo(state.map);
   state.map.on('click', (ev)=>{
+    if(state.walkBoundary && state.walkBoundary.mapPointMode){
+      walkBoundaryAddCoord(ev.latlng.lng,ev.latlng.lat,false);
+      return;
+    }
     if(state.stemPlotter){ addStemPointAtLatLng(ev.latlng); return; }
     if(state.pendingDuplicate && state.pendingDuplicate.type==='T'){ createDuplicateAtLatLng(ev.latlng); return; }
     if(state.contextDeleteMode){
@@ -4057,9 +4063,8 @@ function updateWalkBoundaryPreview(){
   const pts=wb.coords.map(c=>[c[1],c[0]]);
   if(!pts.length) return;
   const style={color:'#315f8a',weight:3,dashArray:'6 6',interactive:false};
-  if(pts.length>=3){
-    wb.previewLayer=L.polygon(pts,Object.assign({},style,{fillColor:'#315f8a',fillOpacity:0.10})).addTo(state.map);
-  }else if(pts.length>=2){
+  // Keep the track open during capture. Only Finish polygon closes the ring.
+  if(pts.length>=2){
     wb.previewLayer=L.polyline(pts,style).addTo(state.map);
   }else{
     wb.previewLayer=L.circleMarker(pts[0],{radius:5,color:'#315f8a',weight:2,fillColor:'#315f8a',fillOpacity:0.45,interactive:false}).addTo(state.map);
@@ -4069,8 +4074,11 @@ function walkBoundaryAddCoord(lng,lat,auto=false){
   const wb=state.walkBoundary; if(!wb) return false;
   const coord=[lng,lat];
   const last=wb.coords[wb.coords.length-1];
-  const minDist=auto?2.5:0;
-  if(last&&walkBoundaryDistanceMetres(last,coord)<minDist) return false;
+  const minDist=auto?2.5:0.75;
+  if(last&&walkBoundaryDistanceMetres(last,coord)<minDist){
+    if(!auto) showNotice('Point is too close to the last point. Move at least 0.75 m.');
+    return false;
+  }
   wb.coords.push(coord);
   wb.lastAddedMs=Date.now();
   updateWalkBoundaryPreview();
@@ -4089,11 +4097,17 @@ function updateWalkBoundaryUi(){
     $('walkStartStopBtn').classList.toggle('primary',!(wb&&wb.walking));
   }
   if($('walkFinishBtn')) $('walkFinishBtn').disabled=!(wb&&wb.coords.length>=3);
+  if($('walkUndoBtn')) $('walkUndoBtn').disabled=!(wb&&wb.coords.length);
+  if($('walkMapPointBtn')){
+    $('walkMapPointBtn').classList.toggle('primary',!!(wb&&wb.mapPointMode));
+    $('walkMapPointBtn').textContent=wb&&wb.mapPointMode?'Stop map points':'Add map point';
+  }
+  if($('walkAddPointBtn')) $('walkAddPointBtn').disabled=!!(wb&&wb.gpsPending);
   if($('walkBoundaryStatus')){
     if(!active){ $('walkBoundaryStatus').textContent='Walk boundary: 0 points'; return; }
     const n=wb.coords.length;
-    const suffix=n>=3?'Ready to stop and finish polygon.':`Add ${3-n} more point${3-n===1?'':'s'} before finishing.`;
-    $('walkBoundaryStatus').textContent=`Walk ${typeWord(wb.featureType)} boundary: ${n} point(s). ${wb.walking?'Walking… ':''}${suffix}`;
+    const suffix=n>=3?'Open boundary: finish when ready.':`Add ${3-n} more point${3-n===1?'':'s'} before finishing.`;
+    $('walkBoundaryStatus').textContent=`Walk ${typeWord(wb.featureType)} boundary: ${n} point(s). ${wb.walking?'Walking… ':wb.mapPointMode?'Tap map to add vertices. ':''}${suffix}`;
   }
 }
 function startWalkBoundary(){
@@ -4102,7 +4116,7 @@ function startWalkBoundary(){
   if(type==='T'){ alert('Walk boundary is for groups, hedges and woodland.'); return; }
   closeSheets();
   if(!state.gpsTracking) startGpsTracking();
-  state.walkBoundary={featureType:type,category:state.createChoice.category,coords:[],walking:false,lastAddedMs:0,previewLayer:null};
+  state.walkBoundary={featureType:type,category:state.createChoice.category,coords:[],walking:false,mapPointMode:false,gpsPending:false,lastAddedMs:0,previewLayer:null};
   updateWalkBoundaryUi();
   showNotice('Walk boundary ready. Tap Start walk, then Stop walk and Finish polygon.');
 }
@@ -4117,6 +4131,7 @@ function toggleWalkBoundaryRecording(){
   }
   if(!navigator.geolocation){ showGps('GPS not available.'); return; }
   if(!state.gpsTracking) startGpsTracking();
+  wb.mapPointMode=false;
   wb.walking=true;
   if(state.currentGpsLatLng) walkBoundaryAddCoord(state.currentGpsLatLng.lng,state.currentGpsLatLng.lat,false);
   updateWalkBoundaryUi();
@@ -4129,21 +4144,63 @@ function walkBoundaryAutoPoint(latlng){
   if(wb.lastAddedMs&&now-wb.lastAddedMs<1800) return;
   walkBoundaryAddCoord(latlng.lng,latlng.lat,true);
 }
+function walkToggleMapPoint(){
+  const wb=state.walkBoundary;if(!wb)return;
+  wb.mapPointMode=!wb.mapPointMode;
+  if(wb.mapPointMode) wb.walking=false;
+  updateWalkBoundaryUi();
+  showNotice(wb.mapPointMode?'Tap the map to extend the open boundary.':'Map-point mode off.');
+}
+function walkUndoLastPoint(){
+  const wb=state.walkBoundary;if(!wb||!wb.coords.length)return;
+  wb.coords.pop();
+  wb.lastAddedMs=0;
+  updateWalkBoundaryPreview();
+  updateWalkBoundaryUi();
+  showNotice('Last boundary point removed.');
+}
 function walkAddGpsPoint(){
   const wb=state.walkBoundary;
-  if(!wb) return;
-  if(!state.currentGpsLatLng){ showGps('Waiting for GPS fix…'); return; }
-  walkBoundaryAddCoord(state.currentGpsLatLng.lng,state.currentGpsLatLng.lat,false);
+  if(!wb)return;
+  if(wb.gpsPending){showNotice('GPS fix already being requested.');return;}
+  if(!navigator.geolocation){showNotice('GPS is not available on this device.');return;}
+  wb.gpsPending=true;
+  updateWalkBoundaryUi();
+  showNotice('Requesting a fresh GPS position…');
+  navigator.geolocation.getCurrentPosition(pos=>{
+    if(state.walkBoundary!==wb)return;
+    wb.gpsPending=false;
+    const latlng={lat:pos.coords.latitude,lng:pos.coords.longitude};
+    const added=walkBoundaryAddCoord(latlng.lng,latlng.lat,false);
+    updateSurveyorMarker(latlng,pos.coords.accuracy);
+    updateWalkBoundaryUi();
+    if(added)showNotice('GPS point '+wb.coords.length+' added (accuracy ±'+Math.round(pos.coords.accuracy||0)+' m).');
+  },err=>{
+    if(state.walkBoundary!==wb)return;
+    wb.gpsPending=false;
+    updateWalkBoundaryUi();
+    const why=err.code===1?'Location permission denied':err.code===2?'Position unavailable':'GPS timed out';
+    showNotice(why+'. Check location settings and try again.');
+    showGps(why+'.');
+  },{enableHighAccuracy:true,maximumAge:0,timeout:15000});
 }
 async function walkFinishPolygon(){
   const wb=state.walkBoundary;
   const p=ensureProject(); if(!p||!wb) return;
   wb.walking=false;
   if(wb.coords.length<3){ alert('Add at least 3 GPS points before finishing a polygon.'); updateWalkBoundaryUi(); return; }
+  const distinct=wb.coords.filter((p,i,a)=>a.findIndex(q=>walkBoundaryDistanceMetres(p,q)<0.75)===i);
+  if(distinct.length<3){showNotice('At least three distinct boundary points are required.');updateWalkBoundaryUi();return;}
   const ring=wb.coords.slice();
   const first=ring[0],last=ring[ring.length-1];
   if(!last||walkBoundaryDistanceMetres(first,last)>0.2) ring.push(first);
   const geom={type:'Polygon',coordinates:[ring]};
+  if(typeof turf!=='undefined' && typeof turf.kinks==='function'){
+    try{if(turf.kinks(turf.polygon([ring])).features.length){
+      showNotice('Boundary crosses itself. Use Undo point or correct the route before finishing.');
+      updateWalkBoundaryUi();return;
+    }}catch(e){console.warn('Boundary intersection check:',e);}
+  }
   const feature={type:'Feature',id:uid(),geometry:geom,properties:buildDefaults(wb.featureType,wb.category,null)};
   try{
     const centre=L.geoJSON({type:'Feature',geometry:geom}).getBounds().getCenter();
@@ -6196,6 +6253,8 @@ function wireUi(){
   if($('walkBoundaryBtn')) $('walkBoundaryBtn').onclick=startWalkBoundary;
   if($('walkStartStopBtn')) $('walkStartStopBtn').onclick=toggleWalkBoundaryRecording;
   if($('walkAddPointBtn')) $('walkAddPointBtn').onclick=walkAddGpsPoint;
+  if($('walkMapPointBtn')) $('walkMapPointBtn').onclick=walkToggleMapPoint;
+  if($('walkUndoBtn')) $('walkUndoBtn').onclick=walkUndoLastPoint;
   if($('walkFinishBtn')) $('walkFinishBtn').onclick=walkFinishPolygon;
   if($('walkCancelBtn')) $('walkCancelBtn').onclick=walkCancelPolygon;
   if($('stemGpsBtn')) $('stemGpsBtn').onclick=addGpsStemPoint;
