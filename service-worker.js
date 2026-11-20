@@ -1,5 +1,5 @@
 const CACHE_PREFIX = 'bud-leaf-teams-';
-const CACHE_NAME = 'bud-leaf-teams-v10-walk-gesture-lock-20261120';
+const CACHE_NAME = 'bud-leaf-teams-v11-draw-handler-lock-20261120';
 
 const CORE_FILES = [
   './index.html',

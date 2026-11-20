@@ -3187,6 +3187,8 @@ function initMap(){
   state.drawLayer=L.featureGroup().addTo(state.map);
   state.map.on('dragstart',()=>{if(state.walkBoundary)state.walkBoundary.lastMapDragMs=Date.now();});
   state.map.on('dragend',()=>{if(state.walkBoundary)state.walkBoundary.lastMapDragMs=Date.now();});
+  state.map.on('zoomstart',()=>{if(state.walkBoundary)state.walkBoundary.lastMapDragMs=Date.now();});
+  state.map.on('zoomend',()=>{if(state.walkBoundary)state.walkBoundary.lastMapDragMs=Date.now();});
   state.map.on('click', (ev)=>{
     if(state.walkBoundary){
       // No map-created vertices during GPS walking; panning and zooming are safe.
@@ -4147,6 +4149,13 @@ function startWalkBoundary(){
   const type=state.createChoice.featureType;
   if(type==='T'){ alert('Walk boundary is for groups, hedges and woodland.'); return; }
   closeSheets();
+  // A previously enabled Leaflet.Draw polygon handler interprets map gestures as vertices.
+  if(state.pendingCreate){
+    try{state.pendingCreate.disable();}catch(err){console.warn('Disable pending drawing:',err);}
+    state.pendingCreate=null;
+  }
+  state.contextDrawMode=null;
+  state.textLabelDrawMode=null;
   if(!state.gpsTracking) startGpsTracking();
   state.walkBoundary={featureType:type,category:state.createChoice.category,coords:[],walking:false,mapPointMode:false,lastAddedMs:0,lastMapDragMs:0,previewLayer:null};
   updateWalkBoundaryUi();
@@ -4310,6 +4319,12 @@ function startCreate(){
 }
 
 async function handleDrawCreated(e){
+  // Do not let residual Leaflet.Draw events commit a second geometry during GPS capture.
+  if(state.walkBoundary){
+    if(state.pendingCreate){try{state.pendingCreate.disable();}catch(err){}state.pendingCreate=null;}
+    showNotice('GPS boundary capture is active. Stop walk and choose Add map point to add a vertex.');
+    return;
+  }
   const layer=e.layer;
   if(state.contextDrawMode){
     const p=ensureProject(); if(!p) return;
