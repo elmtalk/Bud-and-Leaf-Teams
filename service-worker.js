@@ -1,5 +1,5 @@
 const CACHE_PREFIX = 'bud-leaf-teams-';
-const CACHE_NAME = 'bud-leaf-teams-v16-stem-locations-20261121';
+const CACHE_NAME = 'bud-leaf-teams-v17-update-control-20261121';
 
 const CORE_FILES = [
   './index.html',
@@ -27,9 +27,8 @@ self.addEventListener('install', function (event) {
           })
         );
       })
-      .then(function () {
-        return self.skipWaiting();
-      })
+      // A new worker stays waiting until the surveyor taps Update now.
+      // Initial installations activate normally when no prior worker exists.
   );
 });
 
