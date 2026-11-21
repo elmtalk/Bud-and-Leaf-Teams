@@ -1,5 +1,5 @@
 {
-  "version": "v0.11.0-beta.4",
+  "version": "v0.11.0-beta.5",
   "release_date": "2026-11-21",
-  "notes": "Standalone unscheduled stem plotting and independent stem locations GeoJSON export in ZIP"
+  "notes": "Controlled PWA update activation and manual Update now reload; unchanged local project storage"
 }
