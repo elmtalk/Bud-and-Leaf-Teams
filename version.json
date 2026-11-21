@@ -1,5 +1,5 @@
 {
-  "version": "v0.11.0-beta.2",
-  "release_date": "2026-11-20",
-  "notes": "Move Check updates and build number to bottom of the main menu"
+  "version": "v0.11.0-beta.3",
+  "release_date": "2026-11-21",
+  "notes": "Fill blank east, south and west crown radii from north when entering a circular canopy"
 }
