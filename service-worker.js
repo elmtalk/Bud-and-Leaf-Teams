@@ -1,5 +1,5 @@
 const CACHE_PREFIX = 'bud-leaf-teams-';
-const CACHE_NAME = 'bud-leaf-teams-v15-north-crown-fill-20261121';
+const CACHE_NAME = 'bud-leaf-teams-v16-stem-locations-20261121';
 
 const CORE_FILES = [
   './index.html',

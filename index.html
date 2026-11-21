@@ -821,6 +821,7 @@ label.btn,
                 <button id="exportKeyTreeCsvBtn" class="btn">Full-field CSV</button>
                 <button id="exportGeoJsonBtn" class="btn">Survey GeoJSON</button>
                 <button id="exportGisGeoJsonBtn" class="btn">GIS GeoJSON</button>
+                <button id="exportStemLocationsBtn" class="btn">Stem locations GeoJSON</button>
                 <button id="exportKmlBtn" class="btn">Tree Survey KML</button>
                 <button id="printSafetyPlanBtn" class="btn primary">Tree location PDF</button>
               </div>
@@ -872,7 +873,7 @@ label.btn,
   </div>
 </div>
 </div>
-<footer class="bl-update-footer" aria-label="App updates"><span id="blVersionHome" class="bl-version">Teams v0.11.0-beta.3</span><button type="button" id="blCheckUpdates" class="btn" style="padding:5px 10px;font-size:12px">Check updates</button></footer>
+<footer class="bl-update-footer" aria-label="App updates"><span id="blVersionHome" class="bl-version">Teams v0.11.0-beta.4</span><button type="button" id="blCheckUpdates" class="btn" style="padding:5px 10px;font-size:12px">Check updates</button></footer>
 </div>
 
 <div id="mapScreen" class="app-screen hidden">
@@ -881,7 +882,7 @@ label.btn,
     <button id="backToProjectsBtn" class="map-btn square top-bar-back" aria-label="Back to projects">&larr;</button>
     <div id="projectTitleBar" class="top-bar-title">No project</div>
   </div>
-  <span id="blVersionMap" class="bl-version bl-version-map">Teams v0.11.0-beta.3</span>
+  <span id="blVersionMap" class="bl-version bl-version-map">Teams v0.11.0-beta.4</span>
   <div class="floating bottom-left">
     <button id="layersBtn" class="map-btn square">Layers</button>
   </div>
@@ -931,8 +932,9 @@ label.btn,
       <label><input type="checkbox" id="layerRlbToggle" checked /> Red line boundary</label>
     </div>
     <div class="field">
-      <label><input type="checkbox" id="layerGroupStemsToggle" checked /> Group stem points</label>
-      <div class="small">Spatial-only layer. Not included in the tree schedule.</div>
+      <label><input type="checkbox" id="layerGroupStemsToggle" checked /> Stem locations (group + standalone)</label>
+      <div class="small">Spatial-only markers; never included in the survey schedule.</div>
+      <div class="row" style="margin-top:8px"><button type="button" id="plotStandaloneStemsBtn" class="btn primary">Plot standalone stems</button></div>
     </div>
     <div class="safety-help-box" id="safetyColourHelp">Tree safety colours: Urgent red, High orange, Moderate yellow, Low blue, No action green, unknown grey.</div>
     <div class="field">
@@ -1024,7 +1026,7 @@ label.btn,
 <script src="https://cdn.jsdelivr.net/npm/proj4@2.9.0/dist/proj4.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
 <script>
-window.BUDLEAF_BUILD_VERSION='v0.11.0-beta.3';
+window.BUDLEAF_BUILD_VERSION='v0.11.0-beta.4';
 proj4.defs("EPSG:27700","+proj=tmerc +lat_0=49 +lon_0=-2 +k=0.9996012717 +x_0=400000 +y_0=-100000 +ellps=airy +towgs84=446.448,-125.157,542.06,0.15,0.247,0.842,-20.4894 +units=m +no_defs +type=crs");
 
 const DB_NAME='bud-field-app-v1';
@@ -2997,6 +2999,36 @@ function groupStemPoints(project=currentProject()){
   project.group_stem_points=Array.isArray(project.group_stem_points)?project.group_stem_points:[];
   return project.group_stem_points;
 }
+function nextStandaloneStemId(project){
+  const existing=groupStemPoints(project).filter(stem=>!stem.parent_id && !stem.parent_feature_uuid);
+  const nums=existing.map(stem=>{const m=String(stem.stem_id||'').match(/^ST(\d+)$/i);return m?Number(m[1]):0;});
+  return 'ST'+(Math.max(0,...nums)+1);
+}
+function startStandaloneStemPlotter(){
+  const p=ensureProject();if(!p)return;
+  if(state.stemPlotter){showNotice('Finish the existing stem plotter first.');return;}
+  closeLayersSheet();
+  closeSheets();
+  if(state.pendingCreate){try{state.pendingCreate.disable();}catch(e){}state.pendingCreate=null;}
+  state.stemPlotter={standalone:true,parent_id:'',parent_feature_id:'',parent_feature_uuid:''};
+  updateStemPlotterUi();
+  showNotice('Standalone stem plotting. Tap map to add a point, or use Add GPS stem. Stems are excluded from the survey schedule.');
+}
+function stemLocationsGeoJSON(project=currentProject()){
+  return {type:'FeatureCollection',name:'stem_locations',project_uuid:project&&project.project_uuid||'',
+    features:groupStemPoints(project).filter(stem=>stem&&stem.geometry&&stem.geometry.type==='Point').map(stem=>{
+      const props=stem.properties||{};
+      return {type:'Feature',id:stem.id||'',geometry:stem.geometry,
+        properties:{layer:'stem_locations',stem_id:stem.stem_id||props.stem_id||'',
+          parent_id:stem.parent_id||'',parent_feature_uuid:stem.parent_feature_uuid||'',
+          stem_uuid:props.stem_uuid||'',surveyor_code:props.surveyor_code||'',surveyor_name:props.surveyor_name||'',
+          standalone:!stem.parent_id&&!stem.parent_feature_uuid}};
+    })};
+}
+function exportStemLocationsGeoJSON(){
+  const p=ensureProject();if(!p)return;
+  downloadText(slugify(p.name)+'_stem_locations.geojson',JSON.stringify(stemLocationsGeoJSON(p),null,2),'application/geo+json');
+}
 function nextStemId(project,parentId,parentFeatureUuid=''){
   const prefix=String(parentId||'G')+'-S';
   const nums=groupStemPoints(project).filter(stem=>{
@@ -3025,8 +3057,9 @@ function updateStemPlotterUi(){
   if($('stemPlotterBanner')) $('stemPlotterBanner').classList.toggle('hidden', !active);
   if(!active) return;
   const p=currentProject();
-  const parentId=state.stemPlotter.parent_id;
-  const count=groupStemPoints(p).filter(stem=>stemBelongsToPlotter(stem,state.stemPlotter)).length;
+  const sp=state.stemPlotter;
+  const parentId=sp.standalone?'Standalone':sp.parent_id;
+  const count=groupStemPoints(p).filter(stem=>sp.standalone?(!stem.parent_id&&!stem.parent_feature_uuid):stemBelongsToPlotter(stem,sp)).length;
   if($('stemPlotterStatus')) $('stemPlotterStatus').textContent=`Stem plotter: ${parentId}. Tap map to add stems, or use GPS. ${count} stem point(s).`;
 }
 function startStemPlotterForSelectedFeature(){
@@ -3044,7 +3077,8 @@ function startStemPlotterForSelectedFeature(){
 async function addStemPointAtLatLng(latlng){
   const p=ensureProject(); const sp=state.stemPlotter;
   if(!p||!sp||!latlng) return;
-  const stem={type:'Feature', id:uid(), parent_feature_id:sp.parent_feature_id, parent_feature_uuid:sp.parent_feature_uuid||'', parent_id:sp.parent_id, stem_id:nextStemId(p,sp.parent_id,sp.parent_feature_uuid), geometry:{type:'Point', coordinates:[latlng.lng,latlng.lat]}, properties:{layer:'group_stem_points', parent_id:sp.parent_id, parent_feature_uuid:sp.parent_feature_uuid||''}};
+  const surveyor=currentTeamsSurveyor();
+  const stem={type:'Feature', id:uid(), parent_feature_id:sp.parent_feature_id||'', parent_feature_uuid:sp.parent_feature_uuid||'', parent_id:sp.parent_id||'', stem_id:sp.standalone?nextStandaloneStemId(p):nextStemId(p,sp.parent_id,sp.parent_feature_uuid), geometry:{type:'Point', coordinates:[latlng.lng,latlng.lat]}, properties:{layer:'stem_locations', parent_id:sp.parent_id||'', parent_feature_uuid:sp.parent_feature_uuid||'', stem_uuid:teamsUuid(), surveyor_code:surveyor&&surveyor.code||'',surveyor_name:surveyor&&surveyor.name||''}};
   stem.properties.stem_id=stem.stem_id;
   groupStemPoints(p).push(stem);
   await saveCurrentProject();
@@ -3094,7 +3128,7 @@ async function undoLastStemPoint(){
 async function clearStemPointsForActiveGroup(){
   const p=ensureProject(); const sp=state.stemPlotter; if(!p||!sp) return;
   if(!confirm('Clear all stem points for this group?')) return;
-  p.group_stem_points=groupStemPoints(p).filter(stem=>!stemBelongsToPlotter(stem,sp));
+  p.group_stem_points=groupStemPoints(p).filter(stem=>sp.standalone?!!(stem.parent_id||stem.parent_feature_uuid):!stemBelongsToPlotter(stem,sp));
   await saveCurrentProject(); rebuildMap(); updateStemPlotterUi(); showNotice('Group stem points cleared.');
 }
 function finishStemPlotter(){
@@ -4697,6 +4731,7 @@ async function budCollectProjectZipEntries(p){
   const slug=budProjectFileBase(p);
   const stamp=new Date().toISOString().replace(/[:.]/g,'-').slice(0,19);
   const entries=[
+    {name:`exports/${slug}_stem_locations.geojson`,blob:new Blob([JSON.stringify(stemLocationsGeoJSON(p),null,2)],{type:'application/geo+json'})},
     {name:`${slug}.bud`, blob:new Blob([JSON.stringify(payload,null,2)],{type:'application/json'})},
     {name:'README.txt', blob:new Blob([budProjectReadmeText(p)],{type:'text/plain'})},
     {name:`exports/${slug}_tree_survey.csv`, blob:new Blob([budScheduleCsvText(p)],{type:'text/csv'})},
@@ -4723,7 +4758,7 @@ function renderProjectFilesList(){
   const p=ensureProject(); if(!p) return;
   const slug=budProjectFileBase(p || {name:'Project'});
   let photoCount=0; (p.features||[]).forEach(f=>{ const photos=Array.isArray((f.properties||{}).photos)?f.properties.photos:[]; photoCount+=photos.length; });
-  const rows=[`${slug}.bud`,`exports/${slug}_tree_survey.csv`,`exports/${slug}_tree_survey.geojson`,`exports/${slug}_tree_survey.kml`,`exports/${slug}_bud_project_package.json`,`photos/ (${photoCount} photo${photoCount===1?'':'s'})`,`backups/`];
+  const rows=[`${slug}.bud`,`exports/${slug}_stem_locations.geojson`,`exports/${slug}_tree_survey.csv`,`exports/${slug}_tree_survey.geojson`,`exports/${slug}_tree_survey.kml`,`exports/${slug}_bud_project_package.json`,`photos/ (${photoCount} photo${photoCount===1?'':'s'})`,`backups/`];
   box.classList.remove('hidden');
   box.innerHTML='<strong>Project package contents</strong><br>'+rows.map(r=>'• '+escapeHtml(r)).join('<br>')+'<br><span class="small">Use Share project ZIP to send these to a PC.</span>';
 }
@@ -5396,6 +5431,7 @@ function openLayersSheet(){
   if($('layerCanopyToggle')) $('layerCanopyToggle').checked = !!state.showCanopy;
   if($('layerRpaToggle')) $('layerRpaToggle').checked = !!state.showRpa;
   if($('layerRlbToggle')) $('layerRlbToggle').checked = !!state.showRlb;
+  if($('layerGroupStemsToggle')) $('layerGroupStemsToggle').checked = !!state.showGroupStems;
   if($('rpaLayerField')) $('rpaLayerField').classList.toggle('hidden', safety);
   if($('safetyColourHelp')) $('safetyColourHelp').classList.toggle('hidden', !safety);
   $('modalBackdrop').classList.remove('hidden');
@@ -5564,7 +5600,7 @@ function budGisProjectFeatureCollection(){
   (p.features||[]).forEach(f=>features.push({type:'Feature',id:f.id,geometry:f.geometry,properties:budFeatureExportProps(f,'survey')}));
   const rpaFc=budRpaFeatureCollection();
   (rpaFc.features||[]).forEach(f=>features.push(f));
-  groupStemPoints(p).forEach((s,i)=>features.push({type:'Feature',id:s.id||('group_stem_'+(i+1)),geometry:s.geometry,properties:Object.assign({},s.properties||{},{layer:'group_stem_points',parent_id:s.parent_id||'',stem_id:s.stem_id||'',wkt:budGeomToWkt(s.geometry)})}));
+  stemLocationsGeoJSON(p).features.forEach(s=>features.push({type:'Feature',id:s.id,geometry:s.geometry,properties:Object.assign({},s.properties,{wkt:budGeomToWkt(s.geometry)})}));
   const rlb=featureCollectionOrEmpty(p.red_line_boundary);
   (rlb.features||[]).forEach((f,i)=>features.push({type:'Feature',id:'rlb_'+(i+1),geometry:f.geometry,properties:Object.assign({},f.properties||{},{layer:'red_line_boundary',wkt:budGeomToWkt(f.geometry)})}));
   return {type:'FeatureCollection', name:p.name+'_gis', crs:{type:'name',properties:{name:'EPSG:4326'}}, features};
@@ -6273,6 +6309,7 @@ function wireUi(){
   $('layerRpaToggle').onchange=()=>{ if(isSafetyMode()){ state.showRpa=false; $('layerRpaToggle').checked=false; showNotice('RPAs are hidden in tree safety mode.'); } else { state.showRpa = $('layerRpaToggle').checked; } rebuildMap(); };
   if($('layerRlbToggle')) $('layerRlbToggle').onchange=()=>{ state.showRlb = $('layerRlbToggle').checked; rebuildMap(); };
   if($('layerGroupStemsToggle')) $('layerGroupStemsToggle').onchange=()=>{ state.showGroupStems = $('layerGroupStemsToggle').checked; rebuildMap(); };
+  if($('plotStandaloneStemsBtn')) $('plotStandaloneStemsBtn').onclick=startStandaloneStemPlotter;
   if($('satelliteLayerBtn')) $('satelliteLayerBtn').onclick=()=>switchBaseMap('aerial');
   if($('streetLayerBtn')) $('streetLayerBtn').onclick=()=>switchBaseMap('street');
   $('addFeatureBtn').onclick=openCreateSheet;
@@ -6295,6 +6332,7 @@ function wireUi(){
   if($('exportKeyTreeCsvBtn')) $('exportKeyTreeCsvBtn').onclick=exportKeyTreeCSV;
   if($('exportKmlBtn')) $('exportKmlBtn').onclick=exportKML;
   if($('exportGisGeoJsonBtn')) $('exportGisGeoJsonBtn').onclick=exportGisGeoJSON;
+  if($('exportStemLocationsBtn')) $('exportStemLocationsBtn').onclick=exportStemLocationsGeoJSON;
   if($('printSafetyPlanBtn')) $('printSafetyPlanBtn').onclick=exportTreeLocationPdf;
   $('clearBoundaryBtn').onclick=async ()=>{ const p=ensureProject(); if(!p) return; p.red_line_boundary=null; await saveCurrentProject(); rebuildMap(); fitMapToProject(); renderCurrentProjectSummary(); showNotice(isSafetyMode() ? 'Survey extents cleared.' : 'Red line boundary cleared.'); };
   $('importProjectJsonInput').addEventListener('change',e=>{ const f=e.target.files[0]; if(f) importProjectJsonFile(f); e.target.value=''; });
