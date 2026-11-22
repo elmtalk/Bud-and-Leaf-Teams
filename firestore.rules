@@ -23,7 +23,8 @@ service cloud.firestore {
         && get(root(pid)).data.owner_uid == request.auth.uid;
     }
     function memberOf(pid) {
-      return signed() && exists(member(pid, request.auth.uid));
+      return signed() && exists(root(pid))
+        && exists(member(pid, request.auth.uid));
     }
     function projectAccess(pid) {
       return owner(pid) || memberOf(pid);
