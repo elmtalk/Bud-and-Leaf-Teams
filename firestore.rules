@@ -6,6 +6,9 @@ service cloud.firestore {
         && request.auth.token.email is string
         && request.auth.token.email_verified == true;
     }
+    function signedEmail() {
+      return request.auth.token.email.lower();
+    }
     function root(pid) {
       return /databases/$(database)/documents/budleaf_projects/$(pid);
     }
@@ -49,16 +52,17 @@ service cloud.firestore {
         // The owning user can register themselves after creating the project.
         // Other users must accept a matching, unexpired one-time invitation.
         allow create: if signed() && request.resource.data.uid == uid
-          && request.resource.data.email == request.auth.token.email
+          && request.resource.data.email == signedEmail()
           && (
             (uid == request.auth.uid && owner(pid) && request.resource.data.role == 'owner')
             ||
             (uid == request.auth.uid
               && request.resource.data.role == 'surveyor'
               && request.resource.data.invitation_id is string
+              && get(invite(pid, request.resource.data.invitation_id)).data.status == 'pending'
               && getAfter(invite(pid, request.resource.data.invitation_id)).data.status == 'accepted'
               && getAfter(invite(pid, request.resource.data.invitation_id)).data.accepted_uid == uid
-              && getAfter(invite(pid, request.resource.data.invitation_id)).data.email == request.auth.token.email)
+              && getAfter(invite(pid, request.resource.data.invitation_id)).data.email == signedEmail())
           );
         allow update, delete: if owner(pid);
       }
@@ -74,11 +78,11 @@ service cloud.firestore {
           && request.resource.data.expires_at is timestamp
           && request.resource.data.expires_at > request.time;
         allow get: if owner(pid) ||
-          (signed() && resource.data.email == request.auth.token.email);
+          (signed() && resource.data.email == signedEmail());
         allow list: if owner(pid);
         allow update: if owner(pid) ||
           (signed()
-          && resource.data.email == request.auth.token.email
+          && resource.data.email == signedEmail()
           && resource.data.status == 'pending'
           && resource.data.expires_at > request.time
           && request.resource.data.diff(resource.data).affectedKeys()
@@ -98,7 +102,7 @@ service cloud.firestore {
           owner(pid)
           ||
           (getAfter(member(pid, uid)).data.uid == uid
-            && getAfter(member(pid, uid)).data.email == request.auth.token.email)
+            && getAfter(member(pid, uid)).data.email == signedEmail())
         );
       allow delete: if signed() && request.auth.uid == uid;
     }
