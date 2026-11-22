@@ -1,5 +1,5 @@
 {
-  "version": "v0.11.0-beta.5",
-  "release_date": "2026-11-21",
-  "notes": "Controlled PWA update activation and manual Update now reload; unchanged local project storage"
+  "version": "v0.11.0-beta.6",
+  "release_date": "2026-11-22",
+  "notes": "Verified surveyor account and invitation pilot. Requires Firestore rules deployment; export old anonymous project ZIPs before migration."
 }
