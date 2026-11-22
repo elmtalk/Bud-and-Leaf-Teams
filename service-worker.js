@@ -1,5 +1,5 @@
 const CACHE_PREFIX = 'bud-leaf-teams-';
-const CACHE_NAME = 'bud-leaf-teams-v18-invite-surveyors-20261122';
+const CACHE_NAME = 'bud-leaf-teams-v19-secure-copy-20261122';
 
 const CORE_FILES = [
   './index.html',
