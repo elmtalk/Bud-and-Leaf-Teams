@@ -158,8 +158,22 @@
       app = existing || f.initializeApp(config, appName);
 
       auth = f.getAuth(app);
-      if (!auth.currentUser) await f.signInAnonymously(auth);
+      if (typeof auth.authStateReady === 'function') await auth.authStateReady();
+      if (!auth.currentUser || auth.currentUser.isAnonymous) {
+        currentUser = null;
+        setStatus('Connect Firebase, then sign in using a verified surveyor email.', 'warn');
+        renderState();
+        return false;
+      }
+      await f.reload(auth.currentUser);
+      if (!auth.currentUser.emailVerified) {
+        currentUser = null;
+        setStatus('Verify your surveyor email, then press “I\'ve verified my email”.', 'warn');
+        renderState();
+        return false;
+      }
       currentUser = auth.currentUser;
+      await currentUser.getIdToken(true);
 
       try {
         db = f.initializeFirestore(app, {
@@ -278,7 +292,25 @@
     if (!db && !(await connect(null, true))) return false;
 
     const projectRef = api.doc(db, 'budleaf_projects', project.project_uuid);
-    await api.setDoc(projectRef, cloudProjectPayload(project), { merge: true });
+    const existing = await api.getDoc(projectRef);
+    if (!existing.exists()) {
+      // Only the signed-in verified owner can create a new shared project.
+      await api.setDoc(projectRef, Object.assign(cloudProjectPayload(project), {
+        owner_uid: currentUser.uid
+      }));
+      await api.setDoc(api.doc(db, 'budleaf_projects', project.project_uuid, 'members', currentUser.uid), {
+        uid: currentUser.uid, email: currentUser.email.toLowerCase(), role: 'owner',
+        joined_at: api.serverTimestamp()
+      });
+    } else if (!existing.data().owner_uid) {
+      throw new Error('Legacy anonymous cloud project. Export a ZIP and migrate it to a new secured project before inviting surveyors.');
+    } else {
+      await api.setDoc(projectRef, cloudProjectPayload(project), { merge: true });
+    }
+    await api.setDoc(api.doc(db, 'budleaf_users', currentUser.uid, 'projects', project.project_uuid), {
+      project_uuid: project.project_uuid, name: project.name || 'Project',
+      updated_at: api.serverTimestamp()
+    }, { merge: true });
 
     const uploadMap = readUploadMap(project.project_uuid);
     let featureWrites = 0;
@@ -485,7 +517,7 @@
     const box = el('cloudProjectsList');
     if (box) box.innerHTML = '<div class="clean-muted">Loading cloud projects…</div>';
     try {
-      const snap = await api.getDocs(api.collection(db, 'budleaf_projects'));
+      const snap = await api.getDocs(api.collection(db, 'budleaf_users', currentUser.uid, 'projects'));
       const rows = [];
       snap.forEach(docSnap => {
         const data = docSnap.data() || {};
@@ -642,8 +674,8 @@
     if (connection) {
       const config = savedConfig();
       connection.textContent = connected
-        ? 'Firebase connected · ' + (config && config.projectId ? config.projectId : 'project')
-        : (config ? 'Firebase config saved · not connected yet' : 'No cloud account connected');
+        ? 'Signed in: ' + currentUser.email + ' · ' + (config && config.projectId ? config.projectId : 'Firebase')
+        : (config ? 'Firebase configured · verify and sign in to collaborate' : 'No Firebase configured');
     }
 
     if (project && enabled && connected && !currentUnsubscribe) ensureProjectListener(project);
@@ -666,8 +698,9 @@
     };
 
     const forgetBtn = el('cloudForgetBtn');
-    if (forgetBtn) forgetBtn.onclick = function () {
+    if (forgetBtn) forgetBtn.onclick = async function () {
       stopProjectListener();
+      if (auth && api) await api.signOut(auth).catch(function () {});
       forgetConfig();
       app = auth = db = currentUser = null;
       if (input) input.value = '';
