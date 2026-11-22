@@ -292,12 +292,26 @@
     if (!db && !(await connect(null, true))) return false;
 
     const projectRef = api.doc(db, 'budleaf_projects', project.project_uuid);
-    const existing = await api.getDoc(projectRef);
-    if (!existing.exists()) {
+    let existing = null;
+    try {
+      existing = await api.getDoc(projectRef);
+    } catch (err) {
+      // A non-existent secured project may be unreadable under Firestore rules.
+      // A create is permitted only if its owner_uid is this verified user.
+      if (err.code !== 'permission-denied') throw err;
+    }
+    if (!existing || !existing.exists()) {
       // Only the signed-in verified owner can create a new shared project.
-      await api.setDoc(projectRef, Object.assign(cloudProjectPayload(project), {
-        owner_uid: currentUser.uid
-      }));
+      try {
+        await api.setDoc(projectRef, Object.assign(cloudProjectPayload(project), {
+          owner_uid: currentUser.uid
+        }));
+      } catch (err) {
+        if (err.code === 'permission-denied') {
+          throw new Error('This project UUID is already occupied or inaccessible. Export a ZIP and create a new project rather than overwrite the existing cloud project.');
+        }
+        throw err;
+      }
       await api.setDoc(api.doc(db, 'budleaf_projects', project.project_uuid, 'members', currentUser.uid), {
         uid: currentUser.uid, email: currentUser.email.toLowerCase(), role: 'owner',
         joined_at: api.serverTimestamp()
@@ -746,6 +760,12 @@
     openCloudProject: openCloudProject,
     renderState: renderState,
     firebaseContext: function () { return { api: api, auth: auth, db: db, user: currentUser, config: savedConfig() }; },
+    disconnectAccount: function () {
+      stopProjectListener();
+      currentUser = null;
+      db = null;
+      renderState();
+    },
     isConnected: function () { return !!(db && currentUser); }
   };
 
