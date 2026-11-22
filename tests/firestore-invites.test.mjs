@@ -4,7 +4,7 @@ import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebas
 import { doc, collection, getDoc, getDocs, setDoc, updateDoc, writeBatch, serverTimestamp, Timestamp, deleteDoc } from 'firebase/firestore';
 
 const env = await initializeTestEnvironment({
-  projectId: 'budleaf-invites-rules-test',
+  projectId: 'demo-budleaf-invites',
   firestore: { rules: readFileSync('firestore.rules', 'utf8'), host: '127.0.0.1', port: 8080 }
 });
 after(async () => { await env.cleanup(); });
