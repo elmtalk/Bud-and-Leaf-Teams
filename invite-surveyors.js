@@ -91,7 +91,8 @@
   }
   async function createSecureCopy() {
     await verified();
-    const original=getProject();
+    const original=typeof window.currentProject==='function'?window.currentProject():null;
+    if(!original)throw new Error('Select the local project to copy first.');
     if (!window.confirm('Create a separate secure copy of '+original.name+' for invited surveyors? The original project will remain unchanged. Photos stay local and are not uploaded to Firebase.'))return;
     if (typeof window.blankProject !== 'function' ||
         typeof window.putProjectDb !== 'function' ||
