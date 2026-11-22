@@ -745,6 +745,7 @@
     listCloudProjects: listCloudProjects,
     openCloudProject: openCloudProject,
     renderState: renderState,
+    firebaseContext: function () { return { api: api, auth: auth, db: db, user: currentUser, config: savedConfig() }; },
     isConnected: function () { return !!(db && currentUser); }
   };
 
