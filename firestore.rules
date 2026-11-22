@@ -1,0 +1,106 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signed() {
+      return request.auth != null
+        && request.auth.token.email is string
+        && request.auth.token.email_verified == true;
+    }
+    function root(pid) {
+      return /databases/$(database)/documents/budleaf_projects/$(pid);
+    }
+    function member(pid, uid) {
+      return /databases/$(database)/documents/budleaf_projects/$(pid)/members/$(uid);
+    }
+    function invite(pid, code) {
+      return /databases/$(database)/documents/budleaf_projects/$(pid)/invites/$(code);
+    }
+    function owner(pid) {
+      return signed() && exists(root(pid))
+        && get(root(pid)).data.owner_uid == request.auth.uid;
+    }
+    function memberOf(pid) {
+      return signed() && exists(member(pid, request.auth.uid));
+    }
+    function projectAccess(pid) {
+      return owner(pid) || memberOf(pid);
+    }
+
+    match /budleaf_projects/{pid} {
+      allow create: if signed()
+        && request.resource.data.project_uuid == pid
+        && request.resource.data.owner_uid == request.auth.uid;
+      allow get, list: if signed()
+        && (resource.data.owner_uid == request.auth.uid || memberOf(pid));
+      allow update: if projectAccess(pid)
+        && request.resource.data.owner_uid == resource.data.owner_uid
+        && request.resource.data.project_uuid == resource.data.project_uuid;
+      allow delete: if owner(pid);
+
+      match /features/{fid} {
+        allow get, list: if projectAccess(pid);
+        allow create, update: if projectAccess(pid)
+          && request.resource.data.feature_uuid == fid;
+        allow delete: if projectAccess(pid);
+      }
+
+      match /members/{uid} {
+        allow get, list: if projectAccess(pid);
+        // The owning user can register themselves after creating the project.
+        // Other users must accept a matching, unexpired one-time invitation.
+        allow create: if signed() && request.resource.data.uid == uid
+          && request.resource.data.email == request.auth.token.email
+          && (
+            (uid == request.auth.uid && owner(pid) && request.resource.data.role == 'owner')
+            ||
+            (uid == request.auth.uid
+              && request.resource.data.role == 'surveyor'
+              && request.resource.data.invitation_id is string
+              && getAfter(invite(pid, request.resource.data.invitation_id)).data.status == 'accepted'
+              && getAfter(invite(pid, request.resource.data.invitation_id)).data.accepted_uid == uid
+              && getAfter(invite(pid, request.resource.data.invitation_id)).data.email == request.auth.token.email)
+          );
+        allow update, delete: if owner(pid);
+      }
+
+      match /invites/{code} {
+        allow create: if owner(pid)
+          && code.matches('^[0-9a-f]{48}$')
+          && request.resource.data.project_uuid == pid
+          && request.resource.data.created_by == request.auth.uid
+          && request.resource.data.status == 'pending'
+          && request.resource.data.role == 'surveyor'
+          && request.resource.data.email is string
+          && request.resource.data.expires_at is timestamp
+          && request.resource.data.expires_at > request.time;
+        allow get: if owner(pid) ||
+          (signed() && resource.data.email == request.auth.token.email);
+        allow list: if owner(pid);
+        allow update: if owner(pid) ||
+          (signed()
+          && resource.data.email == request.auth.token.email
+          && resource.data.status == 'pending'
+          && resource.data.expires_at > request.time
+          && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['status', 'accepted_uid', 'accepted_at'])
+          && request.resource.data.status == 'accepted'
+          && request.resource.data.accepted_uid == request.auth.uid
+          && request.resource.data.accepted_at == request.time);
+        allow delete: if owner(pid);
+      }
+    }
+
+    match /budleaf_users/{uid}/projects/{pid} {
+      allow get, list: if signed() && request.auth.uid == uid;
+      allow create, update: if signed() && request.auth.uid == uid
+        && request.resource.data.project_uuid == pid
+        && (
+          owner(pid)
+          ||
+          (getAfter(member(pid, uid)).data.uid == uid
+            && getAfter(member(pid, uid)).data.email == request.auth.token.email)
+        );
+      allow delete: if signed() && request.auth.uid == uid;
+    }
+  }
+}
