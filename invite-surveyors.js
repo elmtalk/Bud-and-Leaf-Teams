@@ -89,6 +89,52 @@
     if(!project.project_meta?.cloud_enabled)throw new Error('Enable cloud for this project first.');
     return project;
   }
+  async function createSecureCopy() {
+    await verified();
+    const original=getProject();
+    if (!window.confirm('Create a separate secure copy of '+original.name+' for invited surveyors? The original project will remain unchanged. Photos stay local and are not uploaded to Firebase.'))return;
+    if (typeof window.blankProject !== 'function' ||
+        typeof window.putProjectDb !== 'function' ||
+        typeof window.refreshProjects !== 'function') {
+      throw new Error('Bud&Leaf project tools are not ready.');
+    }
+    const template=window.blankProject((original.name||'Project')+' (shared)');
+    const duplicate=JSON.parse(JSON.stringify(original,(key,value)=>{
+      if (key==='_linkedProjectFolderHandle' ||
+          key==='projectsRootHandle' ||
+          key==='cloud_deleted_features')return undefined;
+      return value;
+    }));
+    duplicate.id=template.id;
+    duplicate.project_uuid=template.project_uuid;
+    duplicate.name=template.name;
+    duplicate.created_at=new Date().toISOString();
+    duplicate.updated_at=duplicate.created_at;
+    duplicate.project_meta=duplicate.project_meta||{};
+    duplicate.project_meta.project_uuid=duplicate.project_uuid;
+    duplicate.project_meta.project_name=duplicate.name;
+    duplicate.project_meta.cloud_enabled=true;
+    duplicate.project_meta.cloud_origin_uuid=original.project_uuid||'';
+    delete duplicate.project_meta.cloud_deleted_features;
+    delete duplicate.project_meta.linked_folder_name;
+    delete duplicate.project_meta.linked_folder_last_sync;
+    delete duplicate._linkedProjectFolderHandle;
+    delete duplicate.linked_folder_name;
+    delete duplicate.linked_folder_last_sync;
+    delete duplicate.project_folder_name;
+    delete duplicate.project_file_base;
+    await window.putProjectDb(duplicate);
+    await window.refreshProjects(duplicate.id);
+    if(typeof window.afterProjectOpenedUi==='function')window.afterProjectOpenedUi();
+    if(typeof window.renderSetupStatus==='function')window.renderSetupStatus();
+    status('Local secure copy created. Uploading to Firebase…');
+    try{
+      await cloud().syncNow();
+      status('Secure cloud copy ready. Invite surveyors from this project. The original remains unchanged.');
+    }catch(err){
+      status('Secure local copy saved. Cloud upload failed: '+error(err)+'. Use Sync now before inviting.');
+    }
+  }
   async function createInvitation() {
     const f=await verified();
     const project=getProject();
@@ -182,6 +228,7 @@
     bind('cloudVerifyAccountBtn',refreshVerification,'account');
     bind('cloudSignOutBtn',signOut,'account');
     bind('cloudInviteCreateBtn',createInvitation);
+    bind('cloudCreateSecureCopyBtn',createSecureCopy);
     bind('cloudInviteShareBtn',shareInvitation);
     bind('cloudInviteAcceptBtn',acceptInvitation);
     bind('cloudInviteMembersBtn',showMembers);
