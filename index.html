@@ -759,6 +759,46 @@ label.btn,
                   </div>
                 </div>
               </details>
+              <details class="clean-details" style="margin-top:10px">
+                <summary>Surveyor account</summary>
+                <div class="details-body">
+                  <div class="clean-muted">To share projects, sign in with a verified email address. Your local projects remain available without signing in.</div>
+                  <label for="cloudAccountEmail">Email</label>
+                  <input class="input" id="cloudAccountEmail" type="email" autocomplete="username" placeholder="surveyor@example.com">
+                  <label for="cloudAccountPassword">Password</label>
+                  <input class="input" id="cloudAccountPassword" type="password" autocomplete="current-password" placeholder="Your account password">
+                  <div class="row" style="margin-top:9px">
+                    <button id="cloudSignInBtn" class="btn primary" type="button">Sign in</button>
+                    <button id="cloudCreateAccountBtn" class="btn" type="button">Create account</button>
+                    <button id="cloudVerifyAccountBtn" class="btn" type="button">I've verified my email</button>
+                    <button id="cloudSignOutBtn" class="btn" type="button">Sign out</button>
+                  </div>
+                  <div id="cloudAccountStatus" class="clean-muted" style="margin-top:8px">Not signed in.</div>
+                </div>
+              </details>
+              <details id="cloudInvitationsPanel" class="clean-details" style="margin-top:10px">
+                <summary>Invite surveyor / Join project</summary>
+                <div class="details-body">
+                  <div class="clean-muted">An owner can invite a colleague by email. The colleague signs in with that verified address, then accepts a one-use code.</div>
+                  <div class="project-only hidden" id="cloudInviteOwnerSection">
+                    <label for="cloudInviteEmail">Colleague's email</label>
+                    <input class="input" id="cloudInviteEmail" type="email" autocomplete="off" placeholder="colleague@example.com">
+                    <div class="row" style="margin-top:8px">
+                      <button id="cloudInviteCreateBtn" class="btn primary" type="button">Create invitation</button>
+                      <button id="cloudInviteShareBtn" class="btn" type="button" disabled>Share invitation</button>
+                    </div>
+                    <div id="cloudInvitationResult" class="clean-muted" style="margin-top:8px"></div>
+                  </div>
+                  <label for="cloudInviteCode">Invitation code</label>
+                  <input class="input" id="cloudInviteCode" type="text" autocapitalize="off" autocomplete="off" placeholder="Paste the code you received">
+                  <div class="row" style="margin-top:8px">
+                    <button id="cloudInviteAcceptBtn" class="btn primary" type="button">Accept invitation</button>
+                    <button id="cloudInviteMembersBtn" class="btn" type="button">Project surveyors</button>
+                  </div>
+                  <div id="cloudInviteStatus" class="clean-muted" style="margin-top:8px"></div>
+                  <div id="cloudInviteMembersList" class="clean-muted" style="margin-top:8px"></div>
+                </div>
+              </details>
               <div class="row project-only hidden" style="margin-top:10px">
                 <button id="cloudEnableProjectBtn" class="btn primary" type="button">Enable cloud for project</button>
                 <button id="cloudSyncNowBtn" class="btn" type="button">Sync now</button>
