@@ -21,6 +21,8 @@ deployed and validated**.
    their own name and 2–3 letter surveyor code. Those codes are for feature
    attribution and are separate from permission granting.
 
+The app creates and shares a code through the Android share sheet (or clipboard); it does **not** send an email from a backend service automatically.
+
 Invitation access is not granted merely by entering initials or knowing a
 project UUID. Photos continue to be local-only; project data and survey records
 synchronise through the existing cloud interface.
@@ -46,11 +48,12 @@ with **no `owner_uid`**. New Firestore rules cannot safely infer which anonymous
 user owns those projects. **Do not auto-claim or overwrite them.**
 
 Before deploying rules, export a full local ZIP (including photographs) from
-each old project. Keep those backups safe. Create a separate secured project
-under the verified owner account and carefully import/transfer the survey data.
-Use a new project UUID for the secured copy and preserve feature UUIDs, surveyor
-codes and timestamps where possible. Full ZIP restore/migration is still under
-development; do not switch production projects without a tested restore.
+each old project. Keep those backups safe. The new **Create secure copy of this
+project** control creates a separate local copy with a new project UUID,
+preserving feature UUIDs, surveyor codes, dates and photographs locally.
+It attempts to upload that new copy to Firebase under the signed-in owner;
+the original project is unchanged. Verify the clone and cloud sync before inviting anyone.
+Full ZIP restore remains separately under development.
 
 ## Updating both targets
 
@@ -76,3 +79,11 @@ development; do not switch production projects without a tested restore.
 - Revocation UI and paid-device/licence enforcement are not yet implemented.
 - Cloud conflicts and photographic recovery require further validation.
 - The Android invitation UI needs handset testing (including sharing).
+
+### Deployment order
+
+1. Verify Firebase emulator rule tests pass in GitHub Actions.
+2. Back up legacy local projects and confirm they open.
+3. Deploy reviewed rules to the correct Firebase database; this replaces the previous rules.
+4. Verify owner/recipient test accounts and accepted project access, then test PWA ↔ Android together.
+5. Do not invite real clients until the security and restore tests are passed.
