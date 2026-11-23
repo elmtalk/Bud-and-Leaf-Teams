@@ -945,6 +945,7 @@ label.btn,
     <div id="walkBoundaryStatus" class="walk-status">Walk boundary: 0 points</div>
     <div class="row">
       <button id="walkStartStopBtn" class="btn primary">👣 Start walk</button>
+      <button id="walkGpsPointBtn" class="btn">Add GPS point</button>
       <button id="walkMapPointBtn" class="btn">Add map point</button>
       <button id="walkUndoBtn" class="btn">Undo point</button>
       <button id="walkFinishBtn" class="btn">Finish polygon</button>
@@ -2543,6 +2544,11 @@ function showHome(){ $('homeScreen').classList.remove('hidden'); $('mapScreen').
 function showMap(){ $('homeScreen').classList.add('hidden'); $('mapScreen').classList.remove('hidden'); if(!state.gpsTracking) startGpsTracking(); if(state.map) setTimeout(()=>{ state.map.invalidateSize(); rebuildMap(); fitMapToProject(); },80); }
 function closeSheets(){ $('modalBackdrop').classList.add('hidden'); $('createSheet').classList.add('hidden'); $('featureSheet').classList.add('hidden'); if($('layersSheet')) $('layersSheet').classList.add('hidden'); if($('featurePickerSheet')) $('featurePickerSheet').classList.add('hidden'); }
 function updateCreateSheetForMode(){
+  // Keep the feature-type buttons consistent with the type used by the drawing handler.
+  const activeType=(state.createChoice && state.createChoice.featureType)||'T';
+  document.querySelectorAll('#typeChoices [data-type]').forEach(btn=>{
+    btn.classList.toggle('active',btn.dataset.type===activeType);
+  });
   const safety=isSafetyMode();
   if($('categoryCreateField')) $('categoryCreateField').classList.toggle('hidden', safety);
   if($('createHelpText')) $('createHelpText').textContent = safety ? 'Tree safety mode: choose a feature type. Colours are based on urgency/priority, not BS5837 category.' : 'Choose BS5837 category first, then individual tree or polygon feature.';
@@ -4299,6 +4305,32 @@ function walkBoundaryAutoPoint(latlng){
   const now=Date.now();
   if(wb.lastAddedMs&&now-wb.lastAddedMs<1800) return;
   walkBoundaryAddCoord(latlng.lng,latlng.lat,true);
+}
+function walkAddGpsPoint(){
+  const wb=state.walkBoundary;
+  if(!wb) return;
+  if(wb.gpsPending){ showNotice('Already requesting a GPS point.'); return; }
+  if(!navigator.geolocation){ showNotice('GPS unavailable on this device.'); return; }
+  wb.gpsPending=true;
+  const button=$('walkGpsPointBtn');
+  if(button)button.disabled=true;
+  showNotice('Getting current GPS location for boundary point…');
+  navigator.geolocation.getCurrentPosition(pos=>{
+    if(state.walkBoundary!==wb)return;
+    wb.gpsPending=false;
+    if(button)button.disabled=false;
+    const latlng={lat:pos.coords.latitude,lng:pos.coords.longitude};
+    updateSurveyorMarker(latlng,pos.coords.accuracy);
+    if(walkBoundaryAddCoord(latlng.lng,latlng.lat,false)){
+      showNotice('GPS boundary vertex added (accuracy ±'+Math.round(pos.coords.accuracy||0)+' m).');
+    }
+  },err=>{
+    if(state.walkBoundary!==wb)return;
+    wb.gpsPending=false;
+    if(button)button.disabled=false;
+    const reason=err.code===1?'Location permission denied':err.code===2?'GPS position unavailable':'GPS request timed out';
+    showNotice(reason+'.');
+  },{enableHighAccuracy:true,maximumAge:0,timeout:15000});
 }
 function walkToggleMapPoint(){
   const wb=state.walkBoundary;if(!wb)return;
@@ -6411,6 +6443,7 @@ function wireUi(){
   $('startCreateBtn').onclick=startCreate;
   if($('walkBoundaryBtn')) $('walkBoundaryBtn').onclick=startWalkBoundary;
   if($('walkStartStopBtn')) $('walkStartStopBtn').onclick=toggleWalkBoundaryRecording;
+  if($('walkGpsPointBtn')) $('walkGpsPointBtn').onclick=walkAddGpsPoint;
   if($('walkMapPointBtn')) $('walkMapPointBtn').onclick=walkToggleMapPoint;
   if($('walkUndoBtn')) $('walkUndoBtn').onclick=walkUndoLastPoint;
   if($('walkFinishBtn')) $('walkFinishBtn').onclick=walkFinishPolygon;
