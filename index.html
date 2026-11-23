@@ -2840,6 +2840,13 @@ function renderFeatureSheet(feature){
   }
 
   root.querySelectorAll('[data-field-key]').forEach(el=>{
+    // Rapid crown entry: E/S/W may be prefilled from North for a circular
+    // canopy. Select existing radius on focus so the next measurement
+    // replaces it (3 -> 3), rather than appending a digit (3 -> 33).
+    if(['canopy_n','canopy_e','canopy_s','canopy_w'].includes(el.dataset.fieldKey)){
+      el.addEventListener('focus', ()=>{ if(typeof el.select==='function') el.select(); });
+      el.setAttribute('enterkeyhint','next');
+    }
     const saveHandler = async ()=>{
       const key = el.dataset.fieldKey;
       if(key==='stem_diameter' && !isValidDbhField(el.value)){
