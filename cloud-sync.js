@@ -317,7 +317,7 @@
         joined_at: api.serverTimestamp()
       });
     } else if (!existing.data().owner_uid) {
-      throw new Error('Legacy anonymous cloud project. Export a ZIP and migrate it to a new secured project before inviting surveyors.');
+      throw new Error('This project UUID belongs to a legacy anonymous cloud record. It cannot be claimed automatically. Keep a ZIP backup and create a separate secured project with a fresh UUID; restoring or renaming the old project does not change its UUID.');
     } else {
       await api.setDoc(projectRef, cloudProjectPayload(project), { merge: true });
     }
@@ -495,11 +495,23 @@
     }
     if (!(await connect(null, true))) return;
     project.project_meta = project.project_meta || {};
+    const previouslyEnabled = !!project.project_meta.cloud_enabled;
     project.project_meta.cloud_enabled = true;
-    if (typeof window.saveCurrentProject === 'function') await window.saveCurrentProject(true);
-    await pushProject(project, true);
-    ensureProjectListener(project);
-    renderState();
+    try {
+      // Do not persist the enabled flag until the first authorised cloud write
+      // succeeds. A failed migration must leave the local survey usable.
+      const synced = await pushProject(project, true);
+      if (!synced) throw new Error('Cloud connection unavailable. Local project unchanged.');
+      if (typeof window.saveCurrentProject === 'function') await window.saveCurrentProject(true);
+      ensureProjectListener(project);
+      setStatus('Cloud enabled and first sync completed.', 'ok');
+    } catch (err) {
+      project.project_meta.cloud_enabled = previouslyEnabled;
+      setStatus('Could not enable cloud: ' + (err && err.message ? err.message : err) + ' Local project is unchanged.', 'error');
+      console.warn('Bud&Leaf cloud enable failed', err);
+    } finally {
+      renderState();
+    }
   }
 
   async function disableCurrentProject() {
@@ -564,8 +576,11 @@
       });
     } catch (err) {
       console.warn('Could not list cloud projects', err);
-      if (box) box.innerHTML = '<div class="clean-muted">Could not list cloud projects.</div>';
-      setStatus('Could not list cloud projects: ' + (err.message || err), 'error');
+      const reason = err && err.code === 'permission-denied'
+        ? 'Firestore permission denied. Check that the secured Bud&Leaf Firestore rules are deployed for this Firebase project.'
+        : (err && err.message ? err.message : String(err));
+      if (box) box.innerHTML = '<div class="clean-muted">Could not list cloud projects: ' + escapeHtmlSafe(reason) + '</div>';
+      setStatus('Could not list cloud projects: ' + reason, 'error');
     }
   }
 
