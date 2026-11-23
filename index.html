@@ -6336,7 +6336,25 @@ function wireUi(){
     const name=$('newProjectName').value.trim()||'New Project';
     const p=blankProject(name); await putProjectDb(p); $('newProjectName').value=''; await refreshProjects(p.id); showNotice('Project created.');
   };
-  $('duplicateProjectBtn').onclick=async ()=>{ const p=ensureProject(); if(!p) return; const copy=JSON.parse(JSON.stringify(p)); copy.id=uid(); copy.name=p.name+' Copy'; copy.created_at=nowIso(); copy.updated_at=nowIso(); await putProjectDb(copy); await refreshProjects(copy.id); showNotice('Project duplicated.'); };
+  $('duplicateProjectBtn').onclick=async ()=>{
+    const p=ensureProject(); if(!p) return;
+    const copy=JSON.parse(JSON.stringify(p));
+    copy.id=uid();
+    copy.project_uuid=teamsUuid(); // A duplicate must never share the source cloud document.
+    copy.name=p.name+' Copy';
+    copy.created_at=nowIso();
+    copy.updated_at=nowIso();
+    copy.project_meta=Object.assign({},copy.project_meta||{},{
+      project_uuid:copy.project_uuid,
+      project_name:copy.name,
+      cloud_enabled:false
+    });
+    delete copy.project_meta.cloud_deleted_features;
+    // Original feature UUIDs remain unchanged for evidence/provenance and ADM merging.
+    await putProjectDb(copy);
+    await refreshProjects(copy.id);
+    showNotice('Project duplicated locally with a new project UUID. Cloud sharing is off until enabled separately.');
+  };
   $('renameProjectBtn').onclick=async ()=>{ const p=ensureProject(); if(!p) return; const name=prompt('Rename project', p.name); if(!name) return; p.name=name.trim()||p.name; await saveCurrentProject(); await refreshProjects(p.id); showNotice('Project renamed.'); };
   $('archiveProjectBtn').onclick=async ()=>{ const p=ensureProject(); if(!p) return; p.archived = !p.archived; await saveCurrentProject(); await refreshProjects(); showNotice(p.archived ? 'Project archived.' : 'Project restored.'); };
   $('deleteProjectBtn').onclick=async ()=>{ const p=ensureProject(); if(!p) return; if(!confirm(`Delete ${p.name}?`)) return; await deleteProjectDb(p.id); state.currentProjectId=null; await refreshProjects(); showNotice('Project deleted.'); };
