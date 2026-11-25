@@ -1,5 +1,5 @@
 {
-  "version": "v0.11.0-beta.9",
+  "version": "v0.11.0-beta.10",
   "release_date": "2026-11-25",
-  "notes": "Restore pre-rollback invitation pilot after project folder reconnection resolved local survey issue. Requires deployed Firestore rules."
+  "notes": "Separate BS5837 category and multiple quality selections; preserve combined category export."
 }
