@@ -1,13 +1,12 @@
 const CACHE_PREFIX = 'bud-leaf-teams-';
-const CACHE_NAME = 'bud-leaf-teams-v22-category-dropdown-20261125';
+const CACHE_NAME = 'bud-leaf-teams-v23-stability-recovery-20261125';
 
 const CORE_FILES = [
   './index.html',
   './app-updates.js',
   './manifest.webmanifest',
   './teams-surveyor.js',
-  './cloud-sync.js',
-  './invite-surveyors.js'
+  './cloud-sync.js'
 ];
 
 self.addEventListener('install', function (event) {

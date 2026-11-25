@@ -759,48 +759,6 @@ label.btn,
                   </div>
                 </div>
               </details>
-              <details class="clean-details" style="margin-top:10px">
-                <summary>Surveyor account</summary>
-                <div class="details-body">
-                  <div class="clean-muted">To share projects, sign in with a verified email address. Your local projects remain available without signing in.</div>
-                  <label for="cloudAccountEmail">Email</label>
-                  <input class="input" id="cloudAccountEmail" type="email" autocomplete="username" placeholder="surveyor@example.com">
-                  <label for="cloudAccountPassword">Password</label>
-                  <input class="input" id="cloudAccountPassword" type="password" autocomplete="current-password" placeholder="Your account password">
-                  <div class="row" style="margin-top:9px">
-                    <button id="cloudSignInBtn" class="btn primary" type="button">Sign in</button>
-                    <button id="cloudCreateAccountBtn" class="btn" type="button">Create account</button>
-                    <button id="cloudVerifyAccountBtn" class="btn" type="button">I've verified my email</button>
-                    <button id="cloudSignOutBtn" class="btn" type="button">Sign out</button>
-                  </div>
-                  <div id="cloudAccountStatus" class="clean-muted" style="margin-top:8px">Not signed in.</div>
-                </div>
-              </details>
-              <details id="cloudInvitationsPanel" class="clean-details" style="margin-top:10px">
-                <summary>Invite surveyor / Join project</summary>
-                <div class="details-body">
-                  <div class="clean-muted">An owner can invite a colleague by email. The colleague signs in with that verified address, then accepts a one-use code.</div>
-                  <div class="project-only hidden" id="cloudInviteOwnerSection">
-                    <label for="cloudInviteEmail">Colleague's email</label>
-                    <input class="input" id="cloudInviteEmail" type="email" autocomplete="off" placeholder="colleague@example.com">
-                    <div class="row" style="margin-top:8px">
-                      <button id="cloudInviteCreateBtn" class="btn primary" type="button">Create invitation</button>
-                      <button id="cloudInviteShareBtn" class="btn" type="button" disabled>Share invitation</button>
-                    </div>
-                    <div id="cloudInvitationResult" class="clean-muted" style="margin-top:8px"></div>
-                    <div class="clean-muted" style="margin-top:12px">Old anonymous cloud projects cannot be claimed automatically. Make a separate secure copy of the selected local project, retaining its survey records and photos locally.</div>
-                    <button id="cloudCreateSecureCopyBtn" class="btn" type="button" style="margin-top:6px">Create secure copy of this project</button>
-                  </div>
-                  <label for="cloudInviteCode">Invitation code</label>
-                  <input class="input" id="cloudInviteCode" type="text" autocapitalize="off" autocomplete="off" placeholder="Paste the code you received">
-                  <div class="row" style="margin-top:8px">
-                    <button id="cloudInviteAcceptBtn" class="btn primary" type="button">Accept invitation</button>
-                    <button id="cloudInviteMembersBtn" class="btn" type="button">Project surveyors</button>
-                  </div>
-                  <div id="cloudInviteStatus" class="clean-muted" style="margin-top:8px"></div>
-                  <div id="cloudInviteMembersList" class="clean-muted" style="margin-top:8px"></div>
-                </div>
-              </details>
               <div class="row project-only hidden" style="margin-top:10px">
                 <button id="cloudEnableProjectBtn" class="btn primary" type="button">Enable cloud for project</button>
                 <button id="cloudSyncNowBtn" class="btn" type="button">Sync now</button>
@@ -915,7 +873,7 @@ label.btn,
   </div>
 </div>
 </div>
-<footer class="bl-update-footer" aria-label="App updates"><span id="blVersionHome" class="bl-version">Teams v0.11.0-beta.11</span><button type="button" id="blCheckUpdates" class="btn" style="padding:5px 10px;font-size:12px">Check updates</button></footer>
+<footer class="bl-update-footer" aria-label="App updates"><span id="blVersionHome" class="bl-version">Teams v0.11.0-beta.12-recovery</span><button type="button" id="blCheckUpdates" class="btn" style="padding:5px 10px;font-size:12px">Check updates</button></footer>
 </div>
 
 <div id="mapScreen" class="app-screen hidden">
@@ -924,7 +882,7 @@ label.btn,
     <button id="backToProjectsBtn" class="map-btn square top-bar-back" aria-label="Back to projects">&larr;</button>
     <div id="projectTitleBar" class="top-bar-title">No project</div>
   </div>
-  <span id="blVersionMap" class="bl-version bl-version-map">Teams v0.11.0-beta.11</span>
+  <span id="blVersionMap" class="bl-version bl-version-map">Teams v0.11.0-beta.12-recovery</span>
   <div class="floating bottom-left">
     <button id="layersBtn" class="map-btn square">Layers</button>
   </div>
@@ -1068,7 +1026,7 @@ label.btn,
 <script src="https://cdn.jsdelivr.net/npm/proj4@2.9.0/dist/proj4.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
 <script>
-window.BUDLEAF_BUILD_VERSION='v0.11.0-beta.11';
+window.BUDLEAF_BUILD_VERSION='v0.11.0-beta.12-recovery';
 proj4.defs("EPSG:27700","+proj=tmerc +lat_0=49 +lon_0=-2 +k=0.9996012717 +x_0=400000 +y_0=-100000 +ellps=airy +towgs84=446.448,-125.157,542.06,0.15,0.247,0.842,-20.4894 +units=m +no_defs +type=crs");
 
 const DB_NAME='bud-field-app-v1';
@@ -1244,7 +1202,7 @@ const SPECIES_OPTIONS = [
   "Other / record in notes"
 ];
 const AGE_OPTIONS = ['Young','Semi-mature','Early Mature','Mature','Veteran','Ancient'];
-const CATEGORY_OPTIONS = ['A1','A2','A3','A12','A13','A23','A123','B1','B2','B3','B12','B13','B23','B123','C1','C2','C3','C12','C13','C23','C123','U'];
+const CATEGORY_OPTIONS = ['A1','A2','A3','B1','B2','B3','C1','C2','C3','U'];
 const GROUP_SPECIES_OPTIONS = SPECIES_OPTIONS.slice();
 const SINGLE_CONDITION_OPTIONS = ['Good','Fair','Poor','Dead'];
 const RANGE_CONDITION_OPTIONS = ['Good - Good','Good - Fair','Good - Poor','Good - Dead','Fair - Fair','Fair - Poor','Fair - Dead','Poor - Poor','Poor - Dead','Dead - Dead'];
@@ -1747,11 +1705,7 @@ function blankProject(name){
 async function refreshProjects(selectId){
   state.projects=(await listProjectsDb());
   for(const project of state.projects){
-    if(repairProjectSchema(project)){
-      // Repair the in-memory schema now; persist with the next normal project save.
-      // Do not rewrite every stored project (including photos and folder handles)
-      // during startup simply because a dropdown has changed.
-    }
+    if(repairProjectSchema(project)) await putProjectDb(project);
   }
   state.projects.sort((a,b)=>String(a.name).localeCompare(String(b.name)));
   if(selectId) state.currentProjectId=selectId;
@@ -6429,6 +6383,5 @@ boot().catch(err=>{ console.error(err); alert('App failed to start: '+(err && er
 <script src="./app-updates.js"></script>
 <script src="./teams-surveyor.js"></script>
 <script src="./cloud-sync.js"></script>
-<script src="./invite-surveyors.js"></script>
 </body>
 </html>

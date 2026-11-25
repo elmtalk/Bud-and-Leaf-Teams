@@ -1,5 +1,5 @@
 {
-  "version": "v0.11.0-beta.11",
+  "version": "v0.11.0-beta.12-recovery",
   "release_date": "2026-11-25",
-  "notes": "Restore single category dropdown with all 22 values; defer startup schema writes until normal project save."
+  "notes": "Controlled recovery to 21 November beta.5 checkpoint. Only release and cache identifiers changed. Firebase rules unchanged."
 }
