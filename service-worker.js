@@ -1,12 +1,13 @@
 const CACHE_PREFIX = 'bud-leaf-teams-';
-const CACHE_NAME = 'bud-leaf-teams-v18-pwa-recovery-20261125';
+const CACHE_NAME = 'bud-leaf-teams-v20-restored-20261125';
 
 const CORE_FILES = [
   './index.html',
   './app-updates.js',
   './manifest.webmanifest',
   './teams-surveyor.js',
-  './cloud-sync.js'
+  './cloud-sync.js',
+  './invite-surveyors.js'
 ];
 
 self.addEventListener('install', function (event) {

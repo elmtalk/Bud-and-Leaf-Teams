@@ -1,5 +1,5 @@
 {
-  "version": "v0.11.0-beta.8-pwa-recovery",
+  "version": "v0.11.0-beta.9",
   "release_date": "2026-11-25",
-  "notes": "Restore 21 November PWA checkpoint before verified invitation changes; preserve local storage. Existing cloud rules unchanged."
+  "notes": "Restore pre-rollback invitation pilot after project folder reconnection resolved local survey issue. Requires deployed Firestore rules."
 }
