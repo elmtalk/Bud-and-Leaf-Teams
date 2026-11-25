@@ -1,5 +1,5 @@
 {
-  "version": "v0.11.0-beta.7",
-  "release_date": "2026-11-22",
-  "notes": "Invite Surveyor pilot with verified accounts, one-use codes and non-destructive secure local project copy. Requires deployed Firestore rules."
+  "version": "v0.11.0-beta.8-pwa-recovery",
+  "release_date": "2026-11-25",
+  "notes": "Restore 21 November PWA checkpoint before verified invitation changes; preserve local storage. Existing cloud rules unchanged."
 }
