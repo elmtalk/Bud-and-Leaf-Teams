@@ -1,5 +1,5 @@
 {
-  "version": "v0.11.0-beta.10",
+  "version": "v0.11.0-beta.11",
   "release_date": "2026-11-25",
-  "notes": "Separate BS5837 category and multiple quality selections; preserve combined category export."
+  "notes": "Restore single category dropdown with all 22 values; defer startup schema writes until normal project save."
 }

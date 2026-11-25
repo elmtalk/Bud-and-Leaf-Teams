@@ -915,7 +915,7 @@ label.btn,
   </div>
 </div>
 </div>
-<footer class="bl-update-footer" aria-label="App updates"><span id="blVersionHome" class="bl-version">Teams v0.11.0-beta.10</span><button type="button" id="blCheckUpdates" class="btn" style="padding:5px 10px;font-size:12px">Check updates</button></footer>
+<footer class="bl-update-footer" aria-label="App updates"><span id="blVersionHome" class="bl-version">Teams v0.11.0-beta.11</span><button type="button" id="blCheckUpdates" class="btn" style="padding:5px 10px;font-size:12px">Check updates</button></footer>
 </div>
 
 <div id="mapScreen" class="app-screen hidden">
@@ -924,7 +924,7 @@ label.btn,
     <button id="backToProjectsBtn" class="map-btn square top-bar-back" aria-label="Back to projects">&larr;</button>
     <div id="projectTitleBar" class="top-bar-title">No project</div>
   </div>
-  <span id="blVersionMap" class="bl-version bl-version-map">Teams v0.11.0-beta.10</span>
+  <span id="blVersionMap" class="bl-version bl-version-map">Teams v0.11.0-beta.11</span>
   <div class="floating bottom-left">
     <button id="layersBtn" class="map-btn square">Layers</button>
   </div>
@@ -1041,7 +1041,6 @@ label.btn,
         <button class="option-btn" data-cat="U">U</button>
       </div>
     </div>
-    <div class="field" id="qualityCreateField"><label>Quality</label><div id="qualityChoices"></div></div>
     <div class="field">
       <label>Feature type</label>
       <div class="create-grid" id="typeChoices">
@@ -1069,7 +1068,7 @@ label.btn,
 <script src="https://cdn.jsdelivr.net/npm/proj4@2.9.0/dist/proj4.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
 <script>
-window.BUDLEAF_BUILD_VERSION='v0.11.0-beta.10';
+window.BUDLEAF_BUILD_VERSION='v0.11.0-beta.11';
 proj4.defs("EPSG:27700","+proj=tmerc +lat_0=49 +lon_0=-2 +k=0.9996012717 +x_0=400000 +y_0=-100000 +ellps=airy +towgs84=446.448,-125.157,542.06,0.15,0.247,0.842,-20.4894 +units=m +no_defs +type=crs");
 
 const DB_NAME='bud-field-app-v1';
@@ -1245,9 +1244,7 @@ const SPECIES_OPTIONS = [
   "Other / record in notes"
 ];
 const AGE_OPTIONS = ['Young','Semi-mature','Early Mature','Mature','Veteran','Ancient'];
-const CATEGORY_OPTIONS = ['A','B','C'].flatMap(c=>['1','2','3','12','13','23','123'].map(q=>c+q)).concat('U');
-function bsCategoryValue(base,qualities){return base==='U'?'U':(['A','B','C'].includes(base)?base+['1','2','3'].filter(q=>qualities.includes(q)).join(''):'');}
-function bsQualityMarkup(value,disabled=false){return ['1','2','3'].map((q,i)=>'<label style="display:flex;align-items:center;gap:5px;font-weight:normal"><input type="checkbox" data-bs-quality="'+q+'" '+(String(value).slice(1).includes(q)?'checked ':'')+(disabled?'disabled':'')+'> '+q+' — '+['Arboricultural','Landscape','Cultural / conservation'][i]+'</label>').join('');}
+const CATEGORY_OPTIONS = ['A1','A2','A3','A12','A13','A23','A123','B1','B2','B3','B12','B13','B23','B123','C1','C2','C3','C12','C13','C23','C123','U'];
 const GROUP_SPECIES_OPTIONS = SPECIES_OPTIONS.slice();
 const SINGLE_CONDITION_OPTIONS = ['Good','Fair','Poor','Dead'];
 const RANGE_CONDITION_OPTIONS = ['Good - Good','Good - Fair','Good - Poor','Good - Dead','Fair - Fair','Fair - Poor','Fair - Dead','Poor - Poor','Poor - Dead','Dead - Dead'];
@@ -1311,7 +1308,7 @@ const state={
   contextEditAllSnapshot:null,
   contextDeleteMode:false,
   selectedFeatureId:null,
-  createChoice:{category:'A1',featureType:'T'},
+  createChoice:{category:'A',featureType:'T'},
   pendingCreate:null,
   editLayer:null,
   watchId:null,
@@ -1750,7 +1747,11 @@ function blankProject(name){
 async function refreshProjects(selectId){
   state.projects=(await listProjectsDb());
   for(const project of state.projects){
-    if(repairProjectSchema(project)) await putProjectDb(project);
+    if(repairProjectSchema(project)){
+      // Repair the in-memory schema now; persist with the next normal project save.
+      // Do not rewrite every stored project (including photos and folder handles)
+      // during startup simply because a dropdown has changed.
+    }
   }
   state.projects.sort((a,b)=>String(a.name).localeCompare(String(b.name)));
   if(selectId) state.currentProjectId=selectId;
@@ -2548,14 +2549,6 @@ function closeSheets(){ $('modalBackdrop').classList.add('hidden'); $('createShe
 function updateCreateSheetForMode(){
   const safety=isSafetyMode();
   if($('categoryCreateField')) $('categoryCreateField').classList.toggle('hidden', safety);
-  if($('qualityCreateField')) $('qualityCreateField').classList.toggle('hidden', safety || state.createChoice.category==='U');
-  const qualityRoot=$('qualityChoices');
-  if(qualityRoot){
-    qualityRoot.innerHTML=bsQualityMarkup(state.createChoice.category);
-    qualityRoot.querySelectorAll('[data-bs-quality]').forEach(el=>el.onchange=()=>{
-      state.createChoice.category=bsCategoryValue(state.createChoice.category.charAt(0),Array.from(qualityRoot.querySelectorAll('input:checked')).map(q=>q.dataset.bsQuality));
-    });
-  }
   if($('createHelpText')) $('createHelpText').textContent = safety ? 'Tree safety mode: choose a feature type. Colours are based on urgency/priority, not BS5837 category.' : 'Choose BS5837 category first, then individual tree or polygon feature.';
   if($('walkBoundaryBtn')){
     const t=state.createChoice && state.createChoice.featureType;
@@ -2771,10 +2764,6 @@ function renderInput(field, value, props){
   const label=escapeHtml(field.label);
   const val=String(value||'');
 
-  if(field.key==='category'){
-    const base=val.charAt(0);
-    return '<div class="field"><label>Category</label><select data-bs-category '+(ro?'disabled':'')+'><option value="">— Select —</option>'+['A','B','C','U'].map(c=>'<option value="'+c+'" '+(base===c?'selected':'')+'>'+c+'</option>').join('')+'</select></div><div class="field '+(!base||base==='U'?'hidden':'')+'" data-bs-quality-field><label>Quality</label>'+bsQualityMarkup(val,ro)+'</div>';
-  }
   if(field.key==='species' && isAreaFeature(props.feature_type)){
     return renderMultiSpeciesInput(field, value);
   }
@@ -2854,18 +2843,6 @@ function renderFeatureSheet(feature){
     rebuildMap();
   }
 
-  const bsSelect=root.querySelector('[data-bs-category]');
-  const bsQuality=root.querySelector('[data-bs-quality-field]');
-  if(bsSelect&&bsQuality){
-    const saveBS=async()=>{
-      bsQuality.classList.toggle('hidden',!bsSelect.value||bsSelect.value==='U');
-      if(bsSelect.value==='U'||!bsSelect.value)bsQuality.querySelectorAll('input').forEach(q=>q.checked=false);
-      props.category=bsCategoryValue(bsSelect.value,Array.from(bsQuality.querySelectorAll('input:checked')).map(q=>q.dataset.bsQuality));
-      await persist();
-    };
-    bsSelect.onchange=saveBS;
-    bsQuality.querySelectorAll('input').forEach(q=>q.onchange=saveBS);
-  }
   root.querySelectorAll('[data-field-key]').forEach(el=>{
     const saveHandler = async ()=>{
       const key = el.dataset.fieldKey;
@@ -3227,7 +3204,7 @@ function buildDefaults(featureType, category, latlng, projectOverride=null){
   const p={};
   schema.forEach(f=>p[f.key]='');
   p.feature_type=featureType;
-  p.category=isSafetyMode(project) ? '' : (String(category||'').length===1 && category!=='U' ? category+'1' : category);
+  p.category=isSafetyMode(project) ? '' : (category==='U' ? 'U' : `${category}1`);
   p.tree_id=nextTreeId(project, featureType);
   p.species='';
   p.age='';
@@ -4279,7 +4256,6 @@ function updateWalkBoundaryUi(){
   }
 }
 function startWalkBoundary(){
-  if(!isSafetyMode() && !CATEGORY_OPTIONS.includes(state.createChoice.category)){alert('Select at least one quality.');return;}
   const p=ensureProject(); if(!p) return;
   const type=state.createChoice.featureType;
   if(type==='T'){ alert('Walk boundary is for groups, hedges and woodland.'); return; }
@@ -4443,7 +4419,6 @@ async function clearContextFeatures(){
 }
 
 function startCreate(){
-  if(!isSafetyMode() && !CATEGORY_OPTIONS.includes(state.createChoice.category)){alert('Select at least one quality.');return;}
   closeSheets();
   if(state.pendingCreate){ try{ state.pendingCreate.disable(); }catch(e){} state.pendingCreate=null; }
   const type=state.createChoice.featureType;
@@ -6410,7 +6385,7 @@ function wireUi(){
   $('importSiteGeoJsonInput').addEventListener('change',e=>{ const f=e.target.files[0]; if(f) loadRedLineFile(f); e.target.value=''; });
   $('importSurveyGeoJsonInput').addEventListener('change',e=>{ const f=e.target.files[0]; if(f) importGeoJSONFile(f); e.target.value=''; });
   $('redLineInput').addEventListener('change',e=>{ const f=e.target.files[0]; if(f) loadRedLineFile(f); e.target.value=''; });
-  document.querySelectorAll('#categoryChoices [data-cat]').forEach(btn=>btn.addEventListener('click',()=>{ state.createChoice.category=bsCategoryValue(btn.dataset.cat,state.createChoice.category.slice(1)||'1'); document.querySelectorAll('#categoryChoices .option-btn').forEach(x=>x.classList.toggle('active',x===btn)); updateCreateSheetForMode(); }));
+  document.querySelectorAll('#categoryChoices [data-cat]').forEach(btn=>btn.addEventListener('click',()=>{ state.createChoice.category=btn.dataset.cat; document.querySelectorAll('#categoryChoices .option-btn').forEach(x=>x.classList.toggle('active',x===btn)); }));
   document.querySelectorAll('#typeChoices [data-type]').forEach(btn=>btn.addEventListener('click',()=>{ state.createChoice.featureType=btn.dataset.type; document.querySelectorAll('#typeChoices .option-btn').forEach(x=>x.classList.toggle('active',x===btn)); updateCreateSheetForMode(); }));
   $('startCreateBtn').onclick=startCreate;
   if($('walkBoundaryBtn')) $('walkBoundaryBtn').onclick=startWalkBoundary;
